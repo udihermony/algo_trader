@@ -1,14 +1,14 @@
 const fs = require('fs');
 const path = require('path');
-const db = require('./config/database');
-const logger = require('./utils/logger');
+const db = require('../config/database');
+const logger = require('../utils/logger');
 
 async function runMigrations() {
   try {
     logger.info('Starting database migrations...');
     
     // Read schema file
-    const schemaPath = path.join(__dirname, '../database/schema.sql');
+    const schemaPath = path.join(__dirname, '../../database/schema.sql');
     const schema = fs.readFileSync(schemaPath, 'utf8');
     
     // Execute schema
