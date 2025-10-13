@@ -1,0 +1,33 @@
+{"level":"info","message":"Starting database migrations...","service":"trading-app","timestamp":"2025-10-13T19:18:08.072Z"}
+{"error":"database \"ehud\" does not exist","level":"error","message":"Database query error","query":"-- Database schema for trading web application\n-- Run this script to create all required tables\n\n-- ","service":"trading-app","timestamp":"2025-10-13T19:18:08.085Z"}
+{"level":"info","message":"Starting database migrations...","service":"trading-app","timestamp":"2025-10-13T19:18:39.022Z"}
+{"error":"database \"ehud\" does not exist","level":"error","message":"Database query error","query":"-- Database schema for trading web application\n-- Run this script to create all required tables\n\n-- ","service":"trading-app","timestamp":"2025-10-13T19:18:39.035Z"}
+{"level":"info","message":"Starting database migrations...","service":"trading-app","timestamp":"2025-10-13T19:18:57.574Z"}
+{"error":"database \"ehud\" does not exist","level":"error","message":"Database query error","query":"-- Database schema for trading web application\n-- Run this script to create all required tables\n\n-- ","service":"trading-app","timestamp":"2025-10-13T19:18:57.587Z"}
+{"level":"info","message":"Starting database migrations...","service":"trading-app","timestamp":"2025-10-13T19:19:17.007Z"}
+{"level":"info","message":"Database connection established","service":"trading-app","timestamp":"2025-10-13T19:19:17.035Z"}
+{"level":"info","message":"Database migrations completed successfully","service":"trading-app","timestamp":"2025-10-13T19:19:17.083Z"}
+{"email":"admin@tradingapp.com","level":"info","message":"Default admin user created","service":"trading-app","timestamp":"2025-10-13T19:19:17.361Z"}
+{"level":"info","message":"Database connection established","service":"trading-app","timestamp":"2025-10-13T19:20:07.320Z"}
+{"level":"info","message":"Database connected successfully","service":"trading-app","timestamp":"2025-10-13T19:20:07.323Z"}
+{"level":"info","message":"Starting cron jobs...","service":"trading-app","timestamp":"2025-10-13T19:20:07.323Z"}
+{"level":"info","message":"Started 4 cron jobs","service":"trading-app","timestamp":"2025-10-13T19:20:07.326Z"}
+{"level":"info","message":"Server running on port 3001","service":"trading-app","timestamp":"2025-10-13T19:20:07.326Z"}
+{"level":"info","message":"Environment: undefined","service":"trading-app","timestamp":"2025-10-13T19:20:07.327Z"}
+{"ip":"::1","level":"info","message":"GET /health","service":"trading-app","timestamp":"2025-10-13T19:20:13.859Z","userAgent":"curl/8.7.1"}
+{"level":"info","message":"Database connection established","service":"trading-app","timestamp":"2025-10-13T19:21:00.387Z"}
+{"level":"info","message":"Database connection established","service":"trading-app","timestamp":"2025-10-13T19:21:17.505Z"}
+{"level":"info","message":"Database connected successfully","service":"trading-app","timestamp":"2025-10-13T19:21:17.509Z"}
+{"level":"info","message":"Database connection established","service":"trading-app","timestamp":"2025-10-13T19:21:30.421Z"}
+{"level":"info","message":"Database connection established","service":"trading-app","timestamp":"2025-10-13T19:22:00.453Z"}
+{"level":"info","message":"Database connection established","service":"trading-app","timestamp":"2025-10-13T19:22:10.241Z"}
+{"level":"info","message":"Database connected successfully","service":"trading-app","timestamp":"2025-10-13T19:22:10.244Z"}
+{"level":"info","message":"Database connection established","service":"trading-app","timestamp":"2025-10-13T19:22:30.482Z"}
+{"level":"info","message":"SIGTERM received, shutting down gracefully","service":"trading-app","timestamp":"2025-10-13T19:22:42.157Z"}
+{"level":"info","message":"Database connection established","service":"trading-app","timestamp":"2025-10-13T19:23:47.512Z"}
+{"level":"info","message":"Database connected successfully","service":"trading-app","timestamp":"2025-10-13T19:23:47.517Z"}
+{"level":"info","message":"Starting cron jobs...","service":"trading-app","timestamp":"2025-10-13T19:23:47.517Z"}
+{"level":"info","message":"Started 4 cron jobs","service":"trading-app","timestamp":"2025-10-13T19:23:47.519Z"}
+{"level":"info","message":"Server running on port 3001","service":"trading-app","timestamp":"2025-10-13T19:23:47.520Z"}
+{"level":"info","message":"Environment: undefined","service":"trading-app","timestamp":"2025-10-13T19:23:47.520Z"}
+{"ip":"::1","level":"info","message":"GET /health","service":"trading-app","timestamp":"2025-10-13T19:24:02.344Z","userAgent":"curl/8.7.1"}
