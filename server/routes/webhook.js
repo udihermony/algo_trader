@@ -7,7 +7,18 @@ const orderExecutionService = require('../services/orderExecutionService');
 
 const router = express.Router();
 
-// Validation schema for Chartlink alert
+// Validation schema for Chartlink alert (actual format)
+const chartlinkSchema = Joi.object({
+  stocks: Joi.string().required(),
+  trigger_prices: Joi.string().required(),
+  triggered_at: Joi.string().required(),
+  scan_name: Joi.string().required(),
+  scan_url: Joi.string().required(),
+  alert_name: Joi.string().required(),
+  webhook_url: Joi.string().optional()
+});
+
+// Legacy schema for backward compatibility
 const alertSchema = Joi.object({
   symbol: Joi.string().required(),
   action: Joi.string().valid('BUY', 'SELL', 'HOLD').required(),
@@ -23,16 +34,44 @@ const alertSchema = Joi.object({
 // Webhook endpoint to receive Chartlink alerts
 router.post('/chartlink', verifyWebhookSignature, async (req, res) => {
   try {
-    const { error, value } = alertSchema.validate(req.body);
+    // Try Chartlink format first
+    let { error, value } = chartlinkSchema.validate(req.body);
+    let alertData;
+    
     if (error) {
-      logger.warn('Invalid alert data received', { 
-        error: error.details[0].message,
-        data: req.body
-      });
-      return res.status(400).json({ error: error.details[0].message });
+      // Fallback to legacy format
+      const legacyResult = alertSchema.validate(req.body);
+      if (legacyResult.error) {
+        logger.warn('Invalid alert data received', { 
+          error: error.details[0].message,
+          data: req.body
+        });
+        return res.status(400).json({ error: 'Invalid alert format' });
+      }
+      alertData = legacyResult.value;
+    } else {
+      // Process Chartlink format
+      const stocks = value.stocks.split(',');
+      const prices = value.trigger_prices.split(',');
+      
+      // Convert Chartlink format to our internal format
+      alertData = {
+        symbol: stocks[0], // Take first stock for now
+        action: 'BUY', // Chartlink breakouts are typically BUY signals
+        price: parseFloat(prices[0]),
+        quantity: 1, // Default quantity
+        timeframe: '1h', // Default timeframe
+        strategy: value.scan_name,
+        timestamp: new Date(),
+        metadata: {
+          chartlink_data: value,
+          all_stocks: stocks,
+          all_prices: prices,
+          scan_url: value.scan_url,
+          alert_name: value.alert_name
+        }
+      };
     }
-
-    const alertData = value;
     
     // For now, we'll process alerts for all users
     // In a multi-user system, you'd need to determine which user this alert is for
@@ -115,16 +154,49 @@ router.post('/chartlink', verifyWebhookSignature, async (req, res) => {
 // Test webhook endpoint (without signature verification)
 router.post('/chartlink/test', async (req, res) => {
   try {
-    const { error, value } = alertSchema.validate(req.body);
+    // Try Chartlink format first
+    let { error, value } = chartlinkSchema.validate(req.body);
+    let processedData;
+    
     if (error) {
-      return res.status(400).json({ error: error.details[0].message });
+      // Fallback to legacy format
+      const legacyResult = alertSchema.validate(req.body);
+      if (legacyResult.error) {
+        return res.status(400).json({ error: 'Invalid alert format' });
+      }
+      processedData = legacyResult.value;
+    } else {
+      // Process Chartlink format
+      const stocks = value.stocks.split(',');
+      const prices = value.trigger_prices.split(',');
+      
+      processedData = {
+        symbol: stocks[0],
+        action: 'BUY',
+        price: parseFloat(prices[0]),
+        quantity: 1,
+        timeframe: '1h',
+        strategy: value.scan_name,
+        timestamp: new Date(),
+        metadata: {
+          chartlink_data: value,
+          all_stocks: stocks,
+          all_prices: prices,
+          scan_url: value.scan_url,
+          alert_name: value.alert_name
+        }
+      };
     }
 
-    logger.info('Test webhook received', { data: value });
+    logger.info('Test webhook received', { 
+      original: req.body,
+      processed: processedData 
+    });
     
     res.json({
       message: 'Test webhook received successfully',
-      data: value,
+      original_data: req.body,
+      processed_data: processedData,
       timestamp: new Date().toISOString()
     });
 
