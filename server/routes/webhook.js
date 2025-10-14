@@ -38,18 +38,7 @@ router.post('/chartlink', verifyWebhookSignature, async (req, res) => {
     let { error, value } = chartlinkSchema.validate(req.body);
     let alertData;
     
-    if (error) {
-      // Fallback to legacy format
-      const legacyResult = alertSchema.validate(req.body);
-      if (legacyResult.error) {
-        logger.warn('Invalid alert data received', { 
-          error: error.details[0].message,
-          data: req.body
-        });
-        return res.status(400).json({ error: 'Invalid alert format' });
-      }
-      alertData = legacyResult.value;
-    } else {
+    if (!error) {
       // Process Chartlink format
       const stocks = value.stocks.split(',');
       const prices = value.trigger_prices.split(',');
@@ -71,6 +60,17 @@ router.post('/chartlink', verifyWebhookSignature, async (req, res) => {
           alert_name: value.alert_name
         }
       };
+    } else {
+      // Fallback to legacy format
+      const legacyResult = alertSchema.validate(req.body);
+      if (legacyResult.error) {
+        logger.warn('Invalid alert data received', { 
+          error: error.details[0].message,
+          data: req.body
+        });
+        return res.status(400).json({ error: 'Invalid alert format' });
+      }
+      alertData = legacyResult.value;
     }
     
     // For now, we'll process alerts for all users
@@ -158,14 +158,7 @@ router.post('/chartlink/test', async (req, res) => {
     let { error, value } = chartlinkSchema.validate(req.body);
     let processedData;
     
-    if (error) {
-      // Fallback to legacy format
-      const legacyResult = alertSchema.validate(req.body);
-      if (legacyResult.error) {
-        return res.status(400).json({ error: 'Invalid alert format' });
-      }
-      processedData = legacyResult.value;
-    } else {
+    if (!error) {
       // Process Chartlink format
       const stocks = value.stocks.split(',');
       const prices = value.trigger_prices.split(',');
@@ -186,6 +179,13 @@ router.post('/chartlink/test', async (req, res) => {
           alert_name: value.alert_name
         }
       };
+    } else {
+      // Fallback to legacy format
+      const legacyResult = alertSchema.validate(req.body);
+      if (legacyResult.error) {
+        return res.status(400).json({ error: 'Invalid alert format' });
+      }
+      processedData = legacyResult.value;
     }
 
     logger.info('Test webhook received', { 
