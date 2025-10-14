@@ -21,6 +21,9 @@ const { authenticateToken } = require('./middleware/auth');
 
 const app = express();
 const server = createServer(app);
+
+// Trust proxy for Railway deployment
+app.set('trust proxy', 1);
 const io = new Server(server, {
   cors: {
     origin: process.env.CORS_ORIGIN || "http://localhost:3000",
