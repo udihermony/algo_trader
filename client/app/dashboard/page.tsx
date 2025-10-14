@@ -4,6 +4,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout'
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { TrendingUp, TrendingDown, AlertTriangle, ShoppingCart } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface DashboardData {
   summary: {
@@ -24,10 +25,15 @@ interface DashboardData {
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const { user, loading: authLoading } = useAuth()
 
   useEffect(() => {
-    fetchDashboardData()
-  }, [])
+    if (!authLoading && user) {
+      fetchDashboardData()
+    } else if (!authLoading && !user) {
+      setLoading(false)
+    }
+  }, [user, authLoading])
 
   const fetchDashboardData = async () => {
     try {
@@ -40,7 +46,7 @@ export default function Dashboard() {
     }
   }
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <DashboardLayout>
         <div className="animate-pulse">
@@ -52,6 +58,17 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (!user) {
+    return (
+      <DashboardLayout>
+        <div className="text-center py-12">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Please log in</h1>
+          <p className="text-gray-600">You need to be logged in to view the dashboard.</p>
         </div>
       </DashboardLayout>
     )
