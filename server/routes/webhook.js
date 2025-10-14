@@ -89,8 +89,8 @@ router.post('/chartlink', async (req, res) => {
       try {
         // Store alert in database
         const alertResult = await db.query(
-          `INSERT INTO alerts (user_id, symbol, action, price, quantity, data, received_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `INSERT INTO alerts (user_id, symbol, action, price, quantity, data, received_at, scan_name, scan_url, alert_name, triggered_at, source)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
            RETURNING id`,
           [
             user.id,
@@ -99,7 +99,12 @@ router.post('/chartlink', async (req, res) => {
             alertData.price,
             alertData.quantity,
             JSON.stringify(alertData),
-            new Date()
+            new Date(),
+            alertData.strategy || null,
+            alertData.metadata?.scan_url || null,
+            alertData.metadata?.alert_name || null,
+            alertData.metadata?.chartlink_data?.triggered_at || null,
+            'chartlink'
           ]
         );
 
