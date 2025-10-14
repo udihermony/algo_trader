@@ -31,8 +31,8 @@ const alertSchema = Joi.object({
   metadata: Joi.object().optional()
 });
 
-// Webhook endpoint to receive Chartlink alerts
-router.post('/chartlink', verifyWebhookSignature, async (req, res) => {
+// Webhook endpoint to receive Chartlink alerts (no signature verification needed)
+router.post('/chartlink', async (req, res) => {
   try {
     // Try Chartlink format first
     let { error, value } = chartlinkSchema.validate(req.body);
