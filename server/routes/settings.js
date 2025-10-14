@@ -5,6 +5,52 @@ const logger = require('../utils/logger');
 
 const router = express.Router();
 
+// Dashboard data endpoint
+router.get('/dashboard', async (req, res) => {
+  try {
+    const userId = req.user?.id || 1; // Default to user 1 if no auth
+    
+    // Get summary data
+    const [positionsResult, ordersResult, alertsResult, strategiesResult] = await Promise.all([
+      db.query('SELECT COUNT(*) as count FROM positions WHERE user_id = $1 AND is_active = true', [userId]),
+      db.query('SELECT COUNT(*) as count FROM orders WHERE user_id = $1 AND status = $2', [userId, 'PENDING']),
+      db.query('SELECT COUNT(*) as count FROM alerts WHERE user_id = $1 AND DATE(received_at) = CURRENT_DATE', [userId]),
+      db.query('SELECT COUNT(*) as count FROM strategies WHERE user_id = $1 AND is_active = true', [userId])
+    ]);
+
+    // Get recent alerts
+    const recentAlertsResult = await db.query(
+      `SELECT symbol, action, price, received_at, status 
+       FROM alerts 
+       WHERE user_id = $1 
+       ORDER BY received_at DESC 
+       LIMIT 10`,
+      [userId]
+    );
+
+    // Calculate today's P&L (simplified)
+    const pnlResult = await db.query(
+      'SELECT COALESCE(SUM(unrealized_pnl), 0) as pnl FROM positions WHERE user_id = $1 AND is_active = true',
+      [userId]
+    );
+
+    res.json({
+      summary: {
+        activePositions: parseInt(positionsResult.rows[0].count),
+        pendingOrders: parseInt(ordersResult.rows[0].count),
+        todayAlerts: parseInt(alertsResult.rows[0].count),
+        activeStrategies: parseInt(strategiesResult.rows[0].count),
+        todayPnL: parseFloat(pnlResult.rows[0].pnl)
+      },
+      recentAlerts: recentAlertsResult.rows
+    });
+
+  } catch (error) {
+    logger.error('Dashboard data fetch error', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch dashboard data' });
+  }
+});
+
 // Validation schema for settings
 const settingsSchema = Joi.object({
   riskParams: Joi.object({
