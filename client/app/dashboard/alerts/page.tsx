@@ -14,6 +14,11 @@ interface Alert {
   status: string
   received_at: string
   processed_at: string
+  scan_name: string
+  scan_url: string
+  alert_name: string
+  triggered_at: string
+  source: string
   data: any
 }
 
@@ -137,6 +142,9 @@ export default function AlertsPage() {
                       Symbol
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Scan
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Action
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -166,6 +174,11 @@ export default function AlertsPage() {
                             {alert.symbol}
                           </span>
                         </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-900">
+                          {alert.scan_name || 'N/A'}
+                        </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={getActionBadge(alert.action)}>
