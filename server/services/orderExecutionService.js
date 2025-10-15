@@ -1,4 +1,51 @@
 const db = require('../config/database');
+const logger = require('../utils/logger');
+const fyersAPI = require('./fyersAPI');
+
+async function processAlert(userId, alertId, alertData) {
+  try {
+    // Read auto execute and credentials
+    const settingsResult = await db.query(
+      'SELECT auto_execute_enabled, fyers_credentials FROM settings WHERE user_id = $1',
+      [userId]
+    );
+
+    const settings = settingsResult.rows[0];
+    const autoExecute = settings?.auto_execute_enabled === true;
+    const credentials = settings?.fyers_credentials ? JSON.parse(settings.fyers_credentials) : null;
+
+    if (!autoExecute || !credentials?.accessToken) {
+      logger.info('Auto execute disabled or no FYERS token; skipping order placement', { userId, alertId });
+      return { skipped: true };
+    }
+
+    const orderData = {
+      symbol: alertData.symbol,
+      qty: alertData.quantity || 1,
+      side: alertData.action === 'SELL' ? 'SELL' : 'BUY',
+      type: 1, // Market
+      productType: 'INTRADAY'
+    };
+
+    const fyersOrder = await fyersAPI.placeOrder(credentials.accessToken, orderData);
+
+    await db.query(
+      `INSERT INTO orders (user_id, alert_id, symbol, side, quantity, order_type, status, fyers_order_id, fyers_response)
+       VALUES ($1, $2, $3, $4, $5, $6, 'SUBMITTED', $7, $8)`,
+      [userId, alertId, orderData.symbol, orderData.side, orderData.qty, 'MARKET', fyersOrder.id, JSON.stringify(fyersOrder)]
+    );
+
+    logger.info('Auto order submitted', { userId, alertId, fyersOrderId: fyersOrder.id });
+    return { submitted: true, fyersOrderId: fyersOrder.id };
+  } catch (error) {
+    logger.error('Auto order placement failed', { userId, alertId, error: error.message });
+    throw error;
+  }
+}
+
+module.exports = { processAlert };
+
+const db = require('../config/database');
 const fyersAPI = require('./fyersAPI');
 const logger = require('../utils/logger');
 const crypto = require('crypto');

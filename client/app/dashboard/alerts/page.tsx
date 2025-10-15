@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { AlertTriangle, Clock, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import axios from 'axios'
 
 interface Alert {
   id: number
@@ -124,6 +125,20 @@ export default function AlertsPage() {
     )
   }
 
+  const executeOrder = async (alert: Alert) => {
+    try {
+      await axios.post('/api/fyers/orders', {
+        symbol: alert.symbol,
+        side: alert.action,
+        qty: alert.quantity || 1,
+        type: 'MARKET'
+      })
+      fetchAlerts()
+    } catch (e) {
+      console.error('Failed to execute order', e)
+    }
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -179,6 +194,9 @@ export default function AlertsPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Processed
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -221,6 +239,9 @@ export default function AlertsPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {alert.processed_at ? new Date(alert.processed_at).toLocaleString() : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <button className="btn btn-secondary btn-sm" onClick={() => executeOrder(alert)}>Execute</button>
                       </td>
                     </tr>
                   ))}

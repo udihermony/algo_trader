@@ -4,6 +4,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout'
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { Settings, Save, RefreshCw, Key, Bell, Clock } from 'lucide-react'
+import Link from 'next/link'
 
 interface SettingsData {
   fyers_credentials: {
@@ -135,6 +136,18 @@ export default function SettingsPage() {
             <Save className={`h-4 w-4 mr-2 ${saving ? 'animate-spin' : ''}`} />
             {saving ? 'Saving...' : 'Save Settings'}
           </button>
+        </div>
+
+        {/* FYERS Integration */}
+        <div className="card p-6">
+          <div className="flex items-center mb-4">
+            <Key className="h-5 w-5 text-gray-400 mr-2" />
+            <h3 className="text-lg font-medium text-gray-900">FYERS Integration</h3>
+          </div>
+          <div className="flex items-center gap-4 mb-4">
+            <Link href="/api/fyers/login" className="btn btn-primary btn-md">Connect FYERS</Link>
+            <AutoExecuteToggle />
+          </div>
         </div>
 
         {/* Fyers API Settings */}
@@ -297,5 +310,30 @@ export default function SettingsPage() {
         </div>
       </div>
     </DashboardLayout>
+  )
+}
+
+function AutoExecuteToggle() {
+  const [enabled, setEnabled] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const update = async (val: boolean) => {
+    try {
+      setLoading(true)
+      await axios.put('/api/fyers/auto-execute', { enabled: val })
+      setEnabled(val)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button
+      className="btn btn-secondary btn-sm"
+      disabled={loading}
+      onClick={() => update(!enabled)}
+    >
+      {enabled ? 'Auto Execute: Enabled' : 'Auto Execute: Disabled'}
+    </button>
   )
 }
