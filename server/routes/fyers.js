@@ -5,43 +5,6 @@ const logger = require('../utils/logger');
 
 const router = express.Router();
 
-// OAuth: Redirect user to FYERS consent/login
-router.get('/login', async (req, res) => {
-  try {
-    const { url } = fyersAPI.generateAuthURL();
-    return res.redirect(url);
-  } catch (error) {
-    logger.error('FYERS login redirect error', { error: error.message });
-    return res.status(500).json({ error: 'Failed to initiate FYERS login' });
-  }
-});
-
-// OAuth callback: exchange auth code and store credentials
-router.get('/callback', async (req, res) => {
-  try {
-    const { code } = req.query;
-    if (!code) {
-      return res.status(400).json({ error: 'Missing auth code' });
-    }
-
-    const tokens = await fyersAPI.getAccessToken(code);
-
-    await db.query(
-      `INSERT INTO settings (user_id, fyers_credentials)
-       VALUES ($1, $2)
-       ON CONFLICT (user_id)
-       DO UPDATE SET fyers_credentials = $2, updated_at = CURRENT_TIMESTAMP`,
-      [req.user.id, JSON.stringify(tokens)]
-    );
-
-    logger.info('FYERS token stored', { userId: req.user.id });
-    return res.redirect('/dashboard/settings');
-  } catch (error) {
-    logger.error('FYERS callback error', { error: error.message });
-    return res.status(500).json({ error: 'Failed to complete FYERS auth' });
-  }
-});
-
 // Toggle auto execute setting
 router.put('/auto-execute', async (req, res) => {
   try {

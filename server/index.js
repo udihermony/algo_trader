@@ -74,6 +74,48 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/webhook', webhookRoutes);
+
+// Public FYERS routes (no auth required)
+app.get('/api/fyers/login', (req, res) => {
+  const fyersAPI = require('./services/fyersAPI');
+  try {
+    const { url } = fyersAPI.generateAuthURL();
+    return res.redirect(url);
+  } catch (error) {
+    logger.error('FYERS login redirect error', { error: error.message });
+    return res.status(500).json({ error: 'Failed to initiate FYERS login' });
+  }
+});
+
+app.get('/api/fyers/callback', async (req, res) => {
+  const fyersAPI = require('./services/fyersAPI');
+  const db = require('./config/database');
+  try {
+    const { code } = req.query;
+    if (!code) {
+      return res.status(400).json({ error: 'Missing auth code' });
+    }
+
+    const tokens = await fyersAPI.getAccessToken(code);
+
+    // For now, store for user 1 (admin) - in production, you'd get user from session
+    await db.query(
+      `INSERT INTO settings (user_id, fyers_credentials)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id)
+       DO UPDATE SET fyers_credentials = $2, updated_at = CURRENT_TIMESTAMP`,
+      [1, JSON.stringify(tokens)]
+    );
+
+    logger.info('FYERS token stored', { userId: 1 });
+    return res.redirect('/dashboard/settings');
+  } catch (error) {
+    logger.error('FYERS callback error', { error: error.message });
+    return res.status(500).json({ error: 'Failed to complete FYERS auth' });
+  }
+});
+
+// Authenticated routes
 app.use('/api/fyers', authenticateToken, fyersRoutes);
 app.use('/api/alerts', authenticateToken, alertsRoutes);
 app.use('/api/orders', authenticateToken, ordersRoutes);
