@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { AlertTriangle, Clock, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import axios from 'axios'
+ 
 
 interface Alert {
   id: number
