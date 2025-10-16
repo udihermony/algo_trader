@@ -22,7 +22,7 @@ class FyersAPI {
     });
 
     return {
-      url: `https://api.fyers.in/api/v3/generate-authcode?${params.toString()}`,
+      url: `https://api.fyers.in/api/dev/generate-authcode?${params.toString()}`,
       state: state
     };
   }
@@ -36,7 +36,7 @@ class FyersAPI {
         code: authCode
       };
 
-      const response = await axios.post(`${this.baseURL}/api/v3/token`, data, {
+      const response = await axios.post(`${this.baseURL}/api/v2/token`, data, {
         headers: {
           'Content-Type': 'application/json'
         }
@@ -79,7 +79,7 @@ class FyersAPI {
   async getProfile(accessToken) {
     try {
       const client = this.createClient(accessToken);
-      const response = await client.get('/api/v3/profile');
+      const response = await client.get('/api/v2/profile');
       
       if (response.data.s === 'ok') {
         return response.data.data;
@@ -96,7 +96,7 @@ class FyersAPI {
   async getBalance(accessToken) {
     try {
       const client = this.createClient(accessToken);
-      const response = await client.get('/api/v3/funds');
+      const response = await client.get('/api/v2/funds');
       
       if (response.data.s === 'ok') {
         return response.data.data;
@@ -113,7 +113,7 @@ class FyersAPI {
   async getPositions(accessToken) {
     try {
       const client = this.createClient(accessToken);
-      const response = await client.get('/api/v3/positions');
+      const response = await client.get('/api/v2/positions');
       
       if (response.data.s === 'ok') {
         return response.data.data;
@@ -134,7 +134,7 @@ class FyersAPI {
       // Validate order data
       const validatedOrder = this.validateOrderData(orderData);
       
-      const response = await client.post('/api/v3/orders', validatedOrder);
+      const response = await client.post('/api/v2/orders', validatedOrder);
       
       if (response.data.s === 'ok') {
         logger.info('Order placed successfully', { 
@@ -161,7 +161,7 @@ class FyersAPI {
     try {
       const client = this.createClient(accessToken);
       
-      const response = await client.put(`/api/v3/orders/${orderId}`, modifyData);
+      const response = await client.put(`/api/v2/orders/${orderId}`, modifyData);
       
       if (response.data.s === 'ok') {
         logger.info('Order modified successfully', { orderId });
@@ -184,7 +184,7 @@ class FyersAPI {
     try {
       const client = this.createClient(accessToken);
       
-      const response = await client.delete(`/api/v3/orders/${orderId}`);
+      const response = await client.delete(`/api/v2/orders/${orderId}`);
       
       if (response.data.s === 'ok') {
         logger.info('Order cancelled successfully', { orderId });
@@ -205,7 +205,7 @@ class FyersAPI {
   async getOrderBook(accessToken) {
     try {
       const client = this.createClient(accessToken);
-      const response = await client.get('/api/v3/orders');
+      const response = await client.get('/api/v2/orders');
       
       if (response.data.s === 'ok') {
         return response.data.data;
@@ -224,7 +224,7 @@ class FyersAPI {
       const client = this.createClient(accessToken);
       const symbolsParam = Array.isArray(symbols) ? symbols.join(',') : symbols;
       
-      const response = await client.get(`/api/v3/market-data?symbols=${symbolsParam}`);
+      const response = await client.get(`/api/v2/market-data?symbols=${symbolsParam}`);
       
       if (response.data.s === 'ok') {
         return response.data.data;
@@ -283,7 +283,7 @@ class FyersAPI {
         refresh_token: refreshToken
       };
 
-      const response = await axios.post(`${this.baseURL}/api/v3/token`, data, {
+      const response = await axios.post(`${this.baseURL}/api/v2/token`, data, {
         headers: {
           'Content-Type': 'application/json'
         }
