@@ -108,7 +108,7 @@ app.get('/api/fyers/callback', async (req, res) => {
     );
 
     logger.info('FYERS token stored', { userId: 1 });
-    return res.redirect('/dashboard/settings');
+    return res.redirect('https://algo-trader-chi.vercel.app/dashboard/settings');
   } catch (error) {
     logger.error('FYERS callback error', { error: error.message });
     return res.status(500).json({ error: 'Failed to complete FYERS auth' });
