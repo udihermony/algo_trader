@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 
 class FyersAPI {
   constructor() {
-    this.baseURL = process.env.FYERS_BASE_URL || 'https://api-t1.fyers.in';
+    this.baseURL = process.env.FYERS_BASE_URL || 'https://api.fyers.in';
     this.appId = process.env.FYERS_APP_ID;
     this.secretKey = process.env.FYERS_SECRET_KEY;
     this.redirectURI = process.env.FYERS_REDIRECT_URI;
@@ -22,7 +22,7 @@ class FyersAPI {
     });
 
     return {
-      url: `https://api-t1.fyers.in/api/v2/generate-authcode?${params.toString()}`,
+      url: `https://api.fyers.in/api/v2/generate-authcode?${params.toString()}`,
       state: state
     };
   }
