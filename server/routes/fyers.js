@@ -337,11 +337,166 @@ router.delete('/orders/:orderId', async (req, res) => {
   }
 });
 
-// Get market data
-router.get('/market-data', async (req, res) => {
+// Get holdings
+router.get('/holdings', async (req, res) => {
+  try {
+    const credentials = await getUserCredentials(req.user.id);
+    
+    if (!credentials) {
+      return res.status(400).json({ error: 'Fyers account not connected' });
+    }
+
+    const holdings = await fyersAPI.getHoldings(credentials.accessToken);
+    
+    res.json(holdings);
+  } catch (error) {
+    logger.error('Holdings fetch error', { 
+      error: error.message, 
+      userId: req.user.id 
+    });
+    res.status(500).json({ error: 'Failed to fetch holdings' });
+  }
+});
+
+// Get tradebook
+router.get('/tradebook', async (req, res) => {
+  try {
+    const { order_tag } = req.query;
+    const credentials = await getUserCredentials(req.user.id);
+    
+    if (!credentials) {
+      return res.status(400).json({ error: 'Fyers account not connected' });
+    }
+
+    const tradebook = await fyersAPI.getTradeBook(credentials.accessToken, order_tag);
+    
+    res.json(tradebook);
+  } catch (error) {
+    logger.error('Tradebook fetch error', { 
+      error: error.message, 
+      userId: req.user.id 
+    });
+    res.status(500).json({ error: 'Failed to fetch tradebook' });
+  }
+});
+
+// Logout user
+router.post('/logout', async (req, res) => {
+  try {
+    const credentials = await getUserCredentials(req.user.id);
+    
+    if (!credentials) {
+      return res.status(400).json({ error: 'Fyers account not connected' });
+    }
+
+    const logoutResponse = await fyersAPI.logout(credentials.accessToken);
+    
+    // Clear stored credentials
+    await db.query(
+      'UPDATE settings SET fyers_credentials = NULL WHERE user_id = $1',
+      [req.user.id]
+    );
+    
+    res.json(logoutResponse);
+  } catch (error) {
+    logger.error('Logout error', { 
+      error: error.message, 
+      userId: req.user.id 
+    });
+    res.status(500).json({ error: 'Failed to logout' });
+  }
+});
+
+// Get market status
+router.get('/market-status', async (req, res) => {
+  try {
+    const credentials = await getUserCredentials(req.user.id);
+    
+    if (!credentials) {
+      return res.status(400).json({ error: 'Fyers account not connected' });
+    }
+
+    const marketStatus = await fyersAPI.getMarketStatus(credentials.accessToken);
+    
+    res.json(marketStatus);
+  } catch (error) {
+    logger.error('Market status fetch error', { 
+      error: error.message, 
+      userId: req.user.id 
+    });
+    res.status(500).json({ error: 'Failed to fetch market status' });
+  }
+});
+
+// Get historical data
+router.get('/historical-data', async (req, res) => {
+  try {
+    const { symbol, resolution, date_format, range_from, range_to, cont_flag } = req.query;
+    
+    if (!symbol || !resolution || !date_format || !range_from || !range_to) {
+      return res.status(400).json({ 
+        error: 'Missing required parameters: symbol, resolution, date_format, range_from, range_to' 
+      });
+    }
+
+    const credentials = await getUserCredentials(req.user.id);
+    
+    if (!credentials) {
+      return res.status(400).json({ error: 'Fyers account not connected' });
+    }
+
+    const historicalData = await fyersAPI.getHistoricalData(
+      credentials.accessToken,
+      symbol,
+      resolution,
+      date_format,
+      range_from,
+      range_to,
+      cont_flag || 0
+    );
+    
+    res.json(historicalData);
+  } catch (error) {
+    logger.error('Historical data fetch error', { 
+      error: error.message, 
+      userId: req.user.id 
+    });
+    res.status(500).json({ error: 'Failed to fetch historical data' });
+  }
+});
+
+// Get market depth
+router.get('/market-depth', async (req, res) => {
+  try {
+    const { symbol } = req.query;
+    
+    if (!symbol) {
+      return res.status(400).json({ error: 'Symbol parameter is required' });
+    }
+
+    const credentials = await getUserCredentials(req.user.id);
+    
+    if (!credentials) {
+      return res.status(400).json({ error: 'Fyers account not connected' });
+    }
+
+    const marketDepth = await fyersAPI.getMarketDepth(credentials.accessToken, symbol);
+    
+    res.json(marketDepth);
+  } catch (error) {
+    logger.error('Market depth fetch error', { 
+      error: error.message, 
+      userId: req.user.id 
+    });
+    res.status(500).json({ error: 'Failed to fetch market depth' });
+  }
+});
+
+// Get quotes
+router.get('/quotes', async (req, res) => {
   try {
     const { symbols } = req.query;
-
+    
     if (!symbols) {
       return res.status(400).json({ error: 'Symbols parameter is required' });
     }
@@ -353,15 +508,52 @@ router.get('/market-data', async (req, res) => {
     }
 
     const symbolList = symbols.split(',');
-    const marketData = await fyersAPI.getMarketData(credentials.accessToken, symbolList);
+    const quotes = await fyersAPI.getQuotes(credentials.accessToken, symbolList);
     
-    res.json(marketData);
+    res.json(quotes);
   } catch (error) {
-    logger.error('Market data fetch error', { 
+    logger.error('Quotes fetch error', { 
       error: error.message, 
       userId: req.user.id 
     });
-    res.status(500).json({ error: 'Failed to fetch market data' });
+    res.status(500).json({ error: 'Failed to fetch quotes' });
+  }
+});
+
+// Refresh access token
+router.post('/refresh-token', async (req, res) => {
+  try {
+    const { pin } = req.body;
+    
+    if (!pin) {
+      return res.status(400).json({ error: 'PIN is required for token refresh' });
+    }
+
+    const credentials = await getUserCredentials(req.user.id);
+    
+    if (!credentials || !credentials.refreshToken) {
+      return res.status(400).json({ error: 'Refresh token not found' });
+    }
+
+    const newTokens = await fyersAPI.refreshAccessToken(credentials.refreshToken, pin);
+    
+    // Update stored credentials
+    const updatedCredentials = JSON.stringify(newTokens);
+    await db.query(
+      'UPDATE settings SET fyers_credentials = $1 WHERE user_id = $2',
+      [updatedCredentials, req.user.id]
+    );
+    
+    res.json({
+      message: 'Token refreshed successfully',
+      expiresIn: newTokens.expiresIn
+    });
+  } catch (error) {
+    logger.error('Token refresh error', { 
+      error: error.message, 
+      userId: req.user.id 
+    });
+    res.status(500).json({ error: 'Failed to refresh token' });
   }
 });
 
