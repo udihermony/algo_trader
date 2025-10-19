@@ -11,7 +11,7 @@ const FYERS_AUTH_URL = 'https://api-t1.fyers.in'; // For auth endpoints
 const FYERS_API_URL = 'https://api.fyers.in';     // For trading endpoints
 const FYERS_APP_ID = process.env.FYERS_APP_ID;
 const FYERS_SECRET_KEY = process.env.FYERS_SECRET_KEY;
-const FYERS_REDIRECT_URI = process.env.FYERS_REDIRECT_URI;
+const FYERS_REDIRECT_URI = process.env.FYERS_REDIRECT_URI || 'https://algotrader-production.up.railway.app/api/fyers/callback';
 
 // Generate App ID Hash
 function generateAppIdHash() {
@@ -100,21 +100,38 @@ router.get('/login', (req, res) => {
 // 2. GET /api/fyers/callback - Handle OAuth callback
 router.get('/callback', async (req, res) => {
   try {
-    const { code, state } = req.query;
+    const { auth_code, code, state, s, message } = req.query;
 
-    // Validate required parameters
-    if (!code) {
-      return res.status(400).json({
-        error: 'Missing Parameter',
-        message: 'Authorization code not received from Fyers'
-      });
+    console.log('📨 Fyers callback received:', { 
+      query: req.query,
+      hasAuthCode: !!auth_code,
+      hasCode: !!code,
+      hasState: !!state,
+      s: s,
+      message: message
+    });
+
+    // Check if Fyers returned an error
+    if (s === 'error') {
+      console.log('❌ Fyers returned error:', { code, message });
+      const frontendUrl = process.env.FRONTEND_URL || 'https://algo-trader-chi.vercel.app';
+      return res.redirect(`${frontendUrl}/dashboard/settings?fyers_error=${encodeURIComponent(message || 'Authentication failed')}`);
+    }
+
+    // Get auth code (Fyers sends it as 'auth_code' or 'code')
+    const authCode = auth_code || code;
+    
+    if (!authCode) {
+      console.log('❌ No auth code received:', req.query);
+      const frontendUrl = process.env.FRONTEND_URL || 'https://algo-trader-chi.vercel.app';
+      return res.redirect(`${frontendUrl}/dashboard/settings?fyers_error=${encodeURIComponent('No authorization code received')}`);
     }
 
     // Check if code is an error code (like 200, 400, etc.)
-    if (code === '200' || code === '400' || code === '401' || code === '403' || code === '404' || code === '500') {
-      console.log('❌ Fyers returned error code:', code);
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-      const errorMessage = encodeURIComponent(`Fyers login failed with error code: ${code}`);
+    if (authCode === '200' || authCode === '400' || authCode === '401' || authCode === '403' || authCode === '404' || authCode === '500') {
+      console.log('❌ Fyers returned error code:', authCode);
+      const frontendUrl = process.env.FRONTEND_URL || 'https://algo-trader-chi.vercel.app';
+      const errorMessage = encodeURIComponent(`Fyers login failed with error code: ${authCode}`);
       return res.redirect(`${frontendUrl}/dashboard/settings?fyers_error=${errorMessage}`);
     }
 
@@ -127,7 +144,7 @@ router.get('/callback', async (req, res) => {
     }
 
     console.log('📨 Received auth code from Fyers');
-    console.log('Code:', code.substring(0, 20) + '...');
+    console.log('Auth Code:', authCode.substring(0, 20) + '...');
 
     // Exchange auth code for access token
     const appIdHash = generateAppIdHash();
@@ -139,7 +156,7 @@ router.get('/callback', async (req, res) => {
       {
         grant_type: 'authorization_code',
         appIdHash: appIdHash,
-        code: code
+        code: authCode
       },
       {
         headers: {
@@ -168,9 +185,9 @@ router.get('/callback', async (req, res) => {
 
     console.log('💾 Tokens stored successfully');
 
-    // Redirect to frontend success page
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(`${frontendUrl}/dashboard/settings?fyers_connected=true`);
+    // Redirect to frontend dashboard with success
+    const frontendUrl = process.env.FRONTEND_URL || 'https://algo-trader-chi.vercel.app';
+    res.redirect(`${frontendUrl}/dashboard?login=success`);
 
   } catch (error) {
     console.error('❌ Callback error:', error.response?.data || error.message);
@@ -191,7 +208,10 @@ router.get('/status', async (req, res) => {
 
     if (!accessToken) {
       return res.json({
-        connected: false,
+        success: true,
+        isLoggedIn: false,
+        hasAccessToken: false,
+        hasRefreshToken: false,
         message: 'Not connected to Fyers'
       });
     }
@@ -207,14 +227,21 @@ router.get('/status', async (req, res) => {
     );
 
     res.json({
-      connected: true,
+      success: true,
+      isLoggedIn: true,
+      hasAccessToken: true,
+      hasRefreshToken: !!req.session?.fyersRefreshToken,
       profile: profileResponse.data
     });
 
   } catch (error) {
+    console.log('Token verification failed:', error.message);
     // Token might be expired
     res.json({
-      connected: false,
+      success: true,
+      isLoggedIn: false,
+      hasAccessToken: false,
+      hasRefreshToken: false,
       message: 'Token expired or invalid'
     });
   }
