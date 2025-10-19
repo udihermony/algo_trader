@@ -48,8 +48,11 @@ class FyersAPI {
 
       logger.info('Making token exchange request', { 
         url: 'https://api-t1.fyers.in/api/v3/validate-authcode',
-        hasAppIdHash: !!data.appIdHash,
-        hasCode: !!data.code
+        requestData: {
+          grant_type: data.grant_type,
+          appIdHash: data.appIdHash ? `${data.appIdHash.substring(0, 8)}...` : 'missing',
+          code: data.code ? `${data.code.substring(0, 20)}...` : 'missing'
+        }
       });
 
       const response = await axios.post('https://api-t1.fyers.in/api/v3/validate-authcode', data, {
@@ -75,8 +78,15 @@ class FyersAPI {
     } catch (error) {
       logger.error('Fyers token exchange error', { 
         error: error.message,
-        response: error.response?.data,
-        status: error.response?.status
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data,
+        responseHeaders: error.response?.headers,
+        requestData: {
+          grant_type: data.grant_type,
+          appIdHash: data.appIdHash ? `${data.appIdHash.substring(0, 8)}...` : 'missing',
+          code: data.code ? `${data.code.substring(0, 20)}...` : 'missing'
+        }
       });
       throw error;
     }
