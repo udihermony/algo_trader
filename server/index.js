@@ -77,7 +77,8 @@ app.use('/api/webhook', webhookRoutes);
 
 // Public FYERS routes (no auth required)
 app.get('/api/fyers/login', (req, res) => {
-  const fyersAPI = require('./services/fyersAPI');
+  const FyersAPI = require('./services/fyersAPI');
+  const fyersAPI = new FyersAPI();
   try {
     const { url } = fyersAPI.generateAuthURL();
     return res.redirect(url);
@@ -88,7 +89,8 @@ app.get('/api/fyers/login', (req, res) => {
 });
 
 app.get('/api/fyers/callback', async (req, res) => {
-  const fyersAPI = require('./services/fyersAPI');
+  const FyersAPI = require('./services/fyersAPI');
+  const fyersAPI = new FyersAPI();
   const db = require('./config/database');
   
   try {

@@ -1,5 +1,6 @@
 const db = require('../config/database');
-const fyersAPI = require('./fyersAPI');
+const FyersAPI = require('./fyersAPI');
+const fyersAPI = new FyersAPI();
 const logger = require('../utils/logger');
 const crypto = require('crypto');
 

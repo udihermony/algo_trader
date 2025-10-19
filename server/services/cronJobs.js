@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const db = require('../config/database');
-const fyersAPI = require('../services/fyersAPI');
+const FyersAPI = require('../services/fyersAPI');
+const fyersAPI = new FyersAPI();
 const logger = require('../utils/logger');
 const orderExecutionService = require('../services/orderExecutionService');
 
