@@ -8,10 +8,6 @@ class FyersAPI {
     this.appId = process.env.FYERS_APP_ID;
     this.secretKey = process.env.FYERS_SECRET_KEY;
     this.redirectURI = process.env.FYERS_REDIRECT_URI;
-    
-    // Extract base app ID without suffix for hashing
-    // Handle both Individual Apps (-100) and Third Party Apps (-102)
-    this.baseAppId = this.appId ? this.appId.replace(/-\d+$/, '') : null;
   }
 
   // Generate authorization URL for OAuth flow
@@ -38,11 +34,9 @@ class FyersAPI {
       logger.info('Starting token exchange', { 
         hasAuthCode: !!authCode,
         hasAppId: !!this.appId,
-        hasBaseAppId: !!this.baseAppId,
         hasSecretKey: !!this.secretKey,
         redirectURI: this.redirectURI,
-        appId: this.appId,
-        baseAppId: this.baseAppId
+        appId: this.appId
       });
 
       if (!this.appId || !this.secretKey) {
@@ -104,7 +98,7 @@ class FyersAPI {
   // Generate app ID hash for authentication
   generateAppIdHash() {
     const hash = crypto.createHash('sha256');
-    hash.update(`${this.baseAppId}:${this.secretKey}`);
+    hash.update(`${this.appId}:${this.secretKey}`);
     return hash.digest('hex');
   }
 
