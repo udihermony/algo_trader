@@ -91,6 +91,14 @@ router.get('/callback', async (req, res) => {
       });
     }
 
+    // Check if code is an error code (like 200, 400, etc.)
+    if (code === '200' || code === '400' || code === '401' || code === '403' || code === '404' || code === '500') {
+      console.log('❌ Fyers returned error code:', code);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const errorMessage = encodeURIComponent(`Fyers login failed with error code: ${code}`);
+      return res.redirect(`${frontendUrl}/dashboard/settings?fyers_error=${errorMessage}`);
+    }
+
     // Validate state (CSRF protection)
     if (req.session?.fyersState && state !== req.session.fyersState) {
       return res.status(400).json({
