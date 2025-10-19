@@ -29,16 +29,38 @@ class FyersAPI {
   // Exchange authorization code for access token
   async getAccessToken(authCode) {
     try {
+      logger.info('Starting token exchange', { 
+        hasAuthCode: !!authCode,
+        hasAppId: !!this.appId,
+        hasSecretKey: !!this.secretKey,
+        redirectURI: this.redirectURI
+      });
+
+      if (!this.appId || !this.secretKey) {
+        throw new Error('Fyers app credentials not configured');
+      }
+
       const data = {
         grant_type: 'authorization_code',
         appIdHash: this.generateAppIdHash(),
         code: authCode
       };
 
+      logger.info('Making token exchange request', { 
+        url: 'https://api-t1.fyers.in/api/v3/validate-authcode',
+        hasAppIdHash: !!data.appIdHash,
+        hasCode: !!data.code
+      });
+
       const response = await axios.post('https://api-t1.fyers.in/api/v3/validate-authcode', data, {
         headers: {
           'Content-Type': 'application/json'
         }
+      });
+
+      logger.info('Token exchange response', { 
+        status: response.status,
+        responseData: response.data
       });
 
       if (response.data.s === 'ok') {
@@ -51,7 +73,11 @@ class FyersAPI {
         throw new Error(response.data.message || 'Failed to get access token');
       }
     } catch (error) {
-      logger.error('Fyers token exchange error', { error: error.message });
+      logger.error('Fyers token exchange error', { 
+        error: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
       throw error;
     }
   }

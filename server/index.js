@@ -90,15 +90,42 @@ app.get('/api/fyers/login', (req, res) => {
 app.get('/api/fyers/callback', async (req, res) => {
   const fyersAPI = require('./services/fyersAPI');
   const db = require('./config/database');
+  
   try {
-    const { code } = req.query;
+    const { code, state } = req.query;
+    
+    logger.info('FYERS callback received', { 
+      code: code ? 'present' : 'missing', 
+      state: state || 'missing',
+      query: req.query 
+    });
+    
     if (!code) {
+      logger.error('FYERS callback missing auth code', { query: req.query });
       return res.status(400).json({ error: 'Missing auth code' });
     }
 
+    // Exchange auth code for tokens
+    logger.info('Exchanging auth code for tokens...');
     const tokens = await fyersAPI.getAccessToken(code);
+    logger.info('Token exchange successful', { 
+      hasAccessToken: !!tokens.accessToken,
+      hasRefreshToken: !!tokens.refreshToken 
+    });
 
-    // For now, store for user 1 (admin) - in production, you'd get user from session
+    // Check if user 1 exists, if not create it
+    const userCheck = await db.query('SELECT id FROM users WHERE id = 1');
+    if (userCheck.rows.length === 0) {
+      logger.info('Creating admin user (id=1)...');
+      await db.query(
+        `INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
+        [1, 'admin@example.com', 'dummy_hash', 'Admin', 'User', true]
+      );
+    }
+
+    // Store tokens for user 1
+    logger.info('Storing FYERS tokens for user 1...');
     await db.query(
       `INSERT INTO settings (user_id, fyers_credentials)
        VALUES ($1, $2)
@@ -107,11 +134,19 @@ app.get('/api/fyers/callback', async (req, res) => {
       [1, JSON.stringify(tokens)]
     );
 
-    logger.info('FYERS token stored', { userId: 1 });
+    logger.info('FYERS token stored successfully', { userId: 1 });
     return res.redirect('https://algo-trader-chi.vercel.app/dashboard/settings');
+    
   } catch (error) {
-    logger.error('FYERS callback error', { error: error.message });
-    return res.status(500).json({ error: 'Failed to complete FYERS auth' });
+    logger.error('FYERS callback error', { 
+      error: error.message,
+      stack: error.stack,
+      query: req.query 
+    });
+    return res.status(500).json({ 
+      error: 'Failed to complete FYERS auth',
+      details: error.message 
+    });
   }
 });
 
