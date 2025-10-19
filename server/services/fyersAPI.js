@@ -28,6 +28,8 @@ class FyersAPI {
 
   // Exchange authorization code for access token
   async getAccessToken(authCode) {
+    let data; // Declare data outside try block for error logging
+    
     try {
       logger.info('Starting token exchange', { 
         hasAuthCode: !!authCode,
@@ -40,7 +42,7 @@ class FyersAPI {
         throw new Error('Fyers app credentials not configured');
       }
 
-      const data = {
+      data = {
         grant_type: 'authorization_code',
         appIdHash: this.generateAppIdHash(),
         code: authCode
@@ -82,11 +84,11 @@ class FyersAPI {
         statusText: error.response?.statusText,
         responseData: error.response?.data,
         responseHeaders: error.response?.headers,
-        requestData: {
+        requestData: data ? {
           grant_type: data.grant_type,
           appIdHash: data.appIdHash ? `${data.appIdHash.substring(0, 8)}...` : 'missing',
           code: data.code ? `${data.code.substring(0, 20)}...` : 'missing'
-        }
+        } : 'data not available'
       });
       throw error;
     }
