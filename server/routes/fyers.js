@@ -1,585 +1,288 @@
+// Fixed Fyers Connection Handler
+// Replace your server/routes/fyers.js with this improved version
+
 const express = require('express');
-const fyersAPI = require('../services/fyersAPI');
-const db = require('../config/database');
-const logger = require('../utils/logger');
-
 const router = express.Router();
+const crypto = require('crypto');
+const axios = require('axios');
 
-// Toggle auto execute setting
-router.put('/auto-execute', async (req, res) => {
+// Fyers API Configuration
+const FYERS_AUTH_URL = 'https://api-t1.fyers.in'; // For auth endpoints
+const FYERS_API_URL = 'https://api.fyers.in';     // For trading endpoints
+const FYERS_APP_ID = process.env.FYERS_APP_ID;
+const FYERS_SECRET_KEY = process.env.FYERS_SECRET_KEY;
+const FYERS_REDIRECT_URI = process.env.FYERS_REDIRECT_URI;
+
+// Generate App ID Hash
+function generateAppIdHash() {
+  if (!FYERS_APP_ID || !FYERS_SECRET_KEY) {
+    throw new Error('Missing FYERS_APP_ID or FYERS_SECRET_KEY');
+  }
+  
+  return crypto
+    .createHash('sha256')
+    .update(`${FYERS_APP_ID}:${FYERS_SECRET_KEY}`)
+    .digest('hex');
+}
+
+// Error handler middleware
+const handleFyersError = (error, res) => {
+  console.error('Fyers API Error:', error.response?.data || error.message);
+  
+  const statusCode = error.response?.status || 500;
+  const errorMessage = error.response?.data?.message || error.message;
+  
+  return res.status(statusCode).json({
+    error: 'Fyers API Error',
+    message: errorMessage,
+    details: error.response?.data || null
+  });
+};
+
+// 1. GET /api/fyers/login - Initiate OAuth flow
+router.get('/login', (req, res) => {
   try {
-    const { enabled } = req.body;
-    await db.query(
-      `INSERT INTO settings (user_id, auto_execute_enabled)
-       VALUES ($1, $2)
-       ON CONFLICT (user_id)
-       DO UPDATE SET auto_execute_enabled = $2, updated_at = CURRENT_TIMESTAMP`,
-      [req.user.id, !!enabled]
-    );
-    return res.json({ message: 'Auto execute updated', enabled: !!enabled });
+    // Validate configuration
+    if (!FYERS_APP_ID || !FYERS_SECRET_KEY || !FYERS_REDIRECT_URI) {
+      return res.status(500).json({
+        error: 'Configuration Error',
+        message: 'Fyers credentials not configured. Please check server environment variables.'
+      });
+    }
+
+    // Generate state for CSRF protection
+    const state = crypto.randomBytes(16).toString('hex');
+    
+    // Store state in session or database for validation
+    req.session = req.session || {};
+    req.session.fyersState = state;
+
+    // Build authorization URL
+    const authUrl = new URL(`${FYERS_AUTH_URL}/api/v3/generate-authcode`);
+    authUrl.searchParams.append('client_id', FYERS_APP_ID);
+    authUrl.searchParams.append('redirect_uri', FYERS_REDIRECT_URI);
+    authUrl.searchParams.append('response_type', 'code');
+    authUrl.searchParams.append('state', state);
+
+    console.log('🔐 Initiating Fyers OAuth flow');
+    console.log('Auth URL:', authUrl.toString());
+
+    // Redirect to Fyers login
+    res.redirect(authUrl.toString());
   } catch (error) {
-    logger.error('Auto execute toggle error', { error: error.message });
-    return res.status(500).json({ error: 'Failed to update auto execute' });
+    console.error('Error generating auth URL:', error);
+    res.status(500).json({
+      error: 'Server Error',
+      message: 'Failed to initiate Fyers login'
+    });
   }
 });
 
-// Connect Fyers account
-router.post('/connect', async (req, res) => {
+// 2. GET /api/fyers/callback - Handle OAuth callback
+router.get('/callback', async (req, res) => {
   try {
-    const { authCode } = req.body;
+    const { code, state } = req.query;
 
-    if (!authCode) {
-      return res.status(400).json({ error: 'Authorization code is required' });
+    // Validate required parameters
+    if (!code) {
+      return res.status(400).json({
+        error: 'Missing Parameter',
+        message: 'Authorization code not received from Fyers'
+      });
     }
+
+    // Validate state (CSRF protection)
+    if (req.session?.fyersState && state !== req.session.fyersState) {
+      return res.status(400).json({
+        error: 'Invalid State',
+        message: 'State parameter mismatch. Possible CSRF attack.'
+      });
+    }
+
+    console.log('📨 Received auth code from Fyers');
+    console.log('Code:', code.substring(0, 20) + '...');
 
     // Exchange auth code for access token
-    const tokens = await fyersAPI.getAccessToken(authCode);
-
-    // Encrypt and store credentials
-    const encryptedCredentials = JSON.stringify(tokens);
-
-    // Update or create settings record
-    await db.query(
-      `INSERT INTO settings (user_id, fyers_credentials)
-       VALUES ($1, $2)
-       ON CONFLICT (user_id) 
-       DO UPDATE SET fyers_credentials = $2, updated_at = CURRENT_TIMESTAMP`,
-      [req.user.id, encryptedCredentials]
+    const appIdHash = generateAppIdHash();
+    
+    console.log('🔄 Exchanging auth code for access token...');
+    
+    const tokenResponse = await axios.post(
+      `${FYERS_AUTH_URL}/api/v3/validate-authcode`,
+      {
+        grant_type: 'authorization_code',
+        appIdHash: appIdHash,
+        code: code
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
     );
 
-    logger.info('Fyers account connected', { userId: req.user.id });
+    console.log('✅ Token exchange successful');
+    console.log('Response:', JSON.stringify(tokenResponse.data, null, 2));
 
-    res.json({
-      message: 'Fyers account connected successfully',
-      expiresIn: tokens.expiresIn
-    });
+    // Extract tokens
+    const { access_token, refresh_token } = tokenResponse.data;
 
-  } catch (error) {
-    logger.error('Fyers connection error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to connect Fyers account' });
-  }
-});
-
-// Get authorization URL
-router.get('/auth-url', (req, res) => {
-  try {
-    const authData = fyersAPI.generateAuthURL();
-    
-    res.json({
-      authUrl: authData.url,
-      state: authData.state
-    });
-  } catch (error) {
-    logger.error('Auth URL generation error', { error: error.message });
-    res.status(500).json({ error: 'Failed to generate auth URL' });
-  }
-});
-
-// Get account balance
-router.get('/balance', async (req, res) => {
-  try {
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
+    if (!access_token) {
+      throw new Error('No access token in response');
     }
 
-    const balance = await fyersAPI.getBalance(credentials.accessToken);
-    
-    res.json(balance);
+    // Store tokens securely in database
+    // TODO: Implement token storage in your database
+    // await storeTokens(req.user.id, access_token, refresh_token);
+
+    // For now, store in session (NOT recommended for production)
+    req.session.fyersAccessToken = access_token;
+    req.session.fyersRefreshToken = refresh_token;
+
+    console.log('💾 Tokens stored successfully');
+
+    // Redirect to frontend success page
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}/dashboard/settings?fyers_connected=true`);
+
   } catch (error) {
-    logger.error('Balance fetch error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to fetch balance' });
+    console.error('❌ Callback error:', error.response?.data || error.message);
+    
+    // Redirect to frontend with error
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const errorMessage = encodeURIComponent(
+      error.response?.data?.message || 'Failed to connect Fyers account'
+    );
+    res.redirect(`${frontendUrl}/dashboard/settings?fyers_error=${errorMessage}`);
   }
 });
 
-// Get positions
-router.get('/positions', async (req, res) => {
+// 3. GET /api/fyers/status - Check connection status
+router.get('/status', async (req, res) => {
   try {
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
-    }
+    const accessToken = req.session?.fyersAccessToken;
 
-    const positions = await fyersAPI.getPositions(credentials.accessToken);
-    
-    res.json(positions);
-  } catch (error) {
-    logger.error('Positions fetch error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to fetch positions' });
-  }
-});
-
-// Get order book
-router.get('/orders', async (req, res) => {
-  try {
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
-    }
-
-    const orders = await fyersAPI.getOrderBook(credentials.accessToken);
-    
-    res.json(orders);
-  } catch (error) {
-    logger.error('Order book fetch error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to fetch orders' });
-  }
-});
-
-// Place manual order
-router.post('/orders', async (req, res) => {
-  try {
-    const { symbol, side, qty, type, limitPrice, stopPrice } = req.body;
-
-    if (!symbol || !side || !qty || !type) {
-      return res.status(400).json({ 
-        error: 'Missing required fields: symbol, side, qty, type' 
+    if (!accessToken) {
+      return res.json({
+        connected: false,
+        message: 'Not connected to Fyers'
       });
     }
 
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
-    }
-
-    const orderData = {
-      symbol,
-      side,
-      qty: parseInt(qty),
-      type,
-      limitPrice: limitPrice ? parseFloat(limitPrice) : undefined,
-      stopPrice: stopPrice ? parseFloat(stopPrice) : undefined
-    };
-
-    const fyersResponse = await fyersAPI.placeOrder(credentials.accessToken, orderData);
-
-    // Store order in database
-    const result = await db.query(
-      `INSERT INTO orders (user_id, symbol, side, quantity, order_type, price, status, fyers_order_id, fyers_response)
-       VALUES ($1, $2, $3, $4, $5, $6, 'SUBMITTED', $7, $8)
-       RETURNING id`,
-      [
-        req.user.id,
-        symbol,
-        side,
-        qty,
-        type,
-        limitPrice,
-        fyersResponse.id,
-        JSON.stringify(fyersResponse)
-      ]
+    // Verify token by fetching profile
+    const profileResponse = await axios.get(
+      `${FYERS_API_URL}/api/v3/profile`,
+      {
+        headers: {
+          Authorization: `${FYERS_APP_ID}:${accessToken}`
+        }
+      }
     );
-
-    logger.info('Manual order placed', {
-      userId: req.user.id,
-      orderId: result.rows[0].id,
-      fyersOrderId: fyersResponse.id,
-      symbol,
-      side,
-      qty
-    });
 
     res.json({
-      orderId: result.rows[0].id,
-      fyersOrderId: fyersResponse.id,
-      status: 'SUBMITTED'
+      connected: true,
+      profile: profileResponse.data
     });
 
   } catch (error) {
-    logger.error('Manual order placement error', { 
-      error: error.message, 
-      userId: req.user.id,
-      orderData: req.body
-    });
-    res.status(500).json({ error: 'Failed to place order' });
-  }
-});
-
-// Modify order
-router.put('/orders/:orderId', async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { limitPrice, stopPrice, qty } = req.body;
-
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
-    }
-
-    // Get order from database
-    const orderResult = await db.query(
-      'SELECT * FROM orders WHERE id = $1 AND user_id = $2',
-      [orderId, req.user.id]
-    );
-
-    if (orderResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    const order = orderResult.rows[0];
-
-    if (!order.fyers_order_id) {
-      return res.status(400).json({ error: 'Fyers order ID not found' });
-    }
-
-    const modifyData = {};
-    if (limitPrice !== undefined) modifyData.limitPrice = limitPrice;
-    if (stopPrice !== undefined) modifyData.stopPrice = stopPrice;
-    if (qty !== undefined) modifyData.qty = qty;
-
-    const fyersResponse = await fyersAPI.modifyOrder(
-      credentials.accessToken, 
-      order.fyers_order_id, 
-      modifyData
-    );
-
-    // Update order in database
-    await db.query(
-      'UPDATE orders SET updated_at = CURRENT_TIMESTAMP WHERE id = $1',
-      [orderId]
-    );
-
-    logger.info('Order modified', {
-      userId: req.user.id,
-      orderId,
-      fyersOrderId: order.fyers_order_id,
-      modifyData
-    });
-
+    // Token might be expired
     res.json({
-      message: 'Order modified successfully',
-      fyersResponse
+      connected: false,
+      message: 'Token expired or invalid'
     });
-
-  } catch (error) {
-    logger.error('Order modification error', { 
-      error: error.message, 
-      userId: req.user.id,
-      orderId: req.params.orderId
-    });
-    res.status(500).json({ error: 'Failed to modify order' });
   }
 });
 
-// Cancel order
-router.delete('/orders/:orderId', async (req, res) => {
+// 4. POST /api/fyers/disconnect - Disconnect Fyers account
+router.post('/disconnect', async (req, res) => {
   try {
-    const { orderId } = req.params;
+    const accessToken = req.session?.fyersAccessToken;
 
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
-    }
-
-    // Get order from database
-    const orderResult = await db.query(
-      'SELECT * FROM orders WHERE id = $1 AND user_id = $2',
-      [orderId, req.user.id]
-    );
-
-    if (orderResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    const order = orderResult.rows[0];
-
-    if (!order.fyers_order_id) {
-      return res.status(400).json({ error: 'Fyers order ID not found' });
-    }
-
-    const fyersResponse = await fyersAPI.cancelOrder(
-      credentials.accessToken, 
-      order.fyers_order_id
-    );
-
-    // Update order status in database
-    await db.query(
-      'UPDATE orders SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      ['CANCELLED', orderId]
-    );
-
-    logger.info('Order cancelled', {
-      userId: req.user.id,
-      orderId,
-      fyersOrderId: order.fyers_order_id
-    });
-
-    res.json({
-      message: 'Order cancelled successfully',
-      fyersResponse
-    });
-
-  } catch (error) {
-    logger.error('Order cancellation error', { 
-      error: error.message, 
-      userId: req.user.id,
-      orderId: req.params.orderId
-    });
-    res.status(500).json({ error: 'Failed to cancel order' });
-  }
-});
-
-// Get holdings
-router.get('/holdings', async (req, res) => {
-  try {
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
-    }
-
-    const holdings = await fyersAPI.getHoldings(credentials.accessToken);
-    
-    res.json(holdings);
-  } catch (error) {
-    logger.error('Holdings fetch error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to fetch holdings' });
-  }
-});
-
-// Get tradebook
-router.get('/tradebook', async (req, res) => {
-  try {
-    const { order_tag } = req.query;
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
-    }
-
-    const tradebook = await fyersAPI.getTradeBook(credentials.accessToken, order_tag);
-    
-    res.json(tradebook);
-  } catch (error) {
-    logger.error('Tradebook fetch error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to fetch tradebook' });
-  }
-});
-
-// Logout user
-router.post('/logout', async (req, res) => {
-  try {
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
-    }
-
-    const logoutResponse = await fyersAPI.logout(credentials.accessToken);
-    
-    // Clear stored credentials
-    await db.query(
-      'UPDATE settings SET fyers_credentials = NULL WHERE user_id = $1',
-      [req.user.id]
-    );
-    
-    res.json(logoutResponse);
-  } catch (error) {
-    logger.error('Logout error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to logout' });
-  }
-});
-
-// Get market status
-router.get('/market-status', async (req, res) => {
-  try {
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
-    }
-
-    const marketStatus = await fyersAPI.getMarketStatus(credentials.accessToken);
-    
-    res.json(marketStatus);
-  } catch (error) {
-    logger.error('Market status fetch error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to fetch market status' });
-  }
-});
-
-// Get historical data
-router.get('/historical-data', async (req, res) => {
-  try {
-    const { symbol, resolution, date_format, range_from, range_to, cont_flag } = req.query;
-    
-    if (!symbol || !resolution || !date_format || !range_from || !range_to) {
-      return res.status(400).json({ 
-        error: 'Missing required parameters: symbol, resolution, date_format, range_from, range_to' 
+    if (accessToken) {
+      // Call Fyers logout endpoint
+      await axios.delete(
+        `${FYERS_API_URL}/api/v3/logout`,
+        {
+          headers: {
+            Authorization: `${FYERS_APP_ID}:${accessToken}`
+          }
+        }
+      ).catch(() => {
+        // Ignore errors, we're disconnecting anyway
       });
     }
 
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
+    // Clear session
+    if (req.session) {
+      delete req.session.fyersAccessToken;
+      delete req.session.fyersRefreshToken;
+      delete req.session.fyersState;
     }
 
-    const historicalData = await fyersAPI.getHistoricalData(
-      credentials.accessToken,
-      symbol,
-      resolution,
-      date_format,
-      range_from,
-      range_to,
-      cont_flag || 0
-    );
-    
-    res.json(historicalData);
-  } catch (error) {
-    logger.error('Historical data fetch error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to fetch historical data' });
-  }
-});
-
-// Get market depth
-router.get('/market-depth', async (req, res) => {
-  try {
-    const { symbol } = req.query;
-    
-    if (!symbol) {
-      return res.status(400).json({ error: 'Symbol parameter is required' });
-    }
-
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
-    }
-
-    const marketDepth = await fyersAPI.getMarketDepth(credentials.accessToken, symbol);
-    
-    res.json(marketDepth);
-  } catch (error) {
-    logger.error('Market depth fetch error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to fetch market depth' });
-  }
-});
-
-// Get quotes
-router.get('/quotes', async (req, res) => {
-  try {
-    const { symbols } = req.query;
-    
-    if (!symbols) {
-      return res.status(400).json({ error: 'Symbols parameter is required' });
-    }
-
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials) {
-      return res.status(400).json({ error: 'Fyers account not connected' });
-    }
-
-    const symbolList = symbols.split(',');
-    const quotes = await fyersAPI.getQuotes(credentials.accessToken, symbolList);
-    
-    res.json(quotes);
-  } catch (error) {
-    logger.error('Quotes fetch error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to fetch quotes' });
-  }
-});
-
-// Refresh access token
-router.post('/refresh-token', async (req, res) => {
-  try {
-    const { pin } = req.body;
-    
-    if (!pin) {
-      return res.status(400).json({ error: 'PIN is required for token refresh' });
-    }
-
-    const credentials = await getUserCredentials(req.user.id);
-    
-    if (!credentials || !credentials.refreshToken) {
-      return res.status(400).json({ error: 'Refresh token not found' });
-    }
-
-    const newTokens = await fyersAPI.refreshAccessToken(credentials.refreshToken, pin);
-    
-    // Update stored credentials
-    const updatedCredentials = JSON.stringify(newTokens);
-    await db.query(
-      'UPDATE settings SET fyers_credentials = $1 WHERE user_id = $2',
-      [updatedCredentials, req.user.id]
-    );
-    
     res.json({
-      message: 'Token refreshed successfully',
-      expiresIn: newTokens.expiresIn
+      success: true,
+      message: 'Disconnected from Fyers successfully'
     });
+
   } catch (error) {
-    logger.error('Token refresh error', { 
-      error: error.message, 
-      userId: req.user.id 
-    });
-    res.status(500).json({ error: 'Failed to refresh token' });
+    handleFyersError(error, res);
   }
 });
 
-// Helper function to get user credentials
-async function getUserCredentials(userId) {
-  const result = await db.query(
-    'SELECT fyers_credentials FROM settings WHERE user_id = $1',
-    [userId]
-  );
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const encryptedCredentials = result.rows[0].fyers_credentials;
-  
-  if (!encryptedCredentials) {
-    return null;
-  }
-
+// 5. GET /api/fyers/profile - Get user profile
+router.get('/profile', async (req, res) => {
   try {
-    return JSON.parse(encryptedCredentials);
+    const accessToken = req.session?.fyersAccessToken;
+
+    if (!accessToken) {
+      return res.status(401).json({
+        error: 'Not Authenticated',
+        message: 'Please connect your Fyers account first'
+      });
+    }
+
+    const response = await axios.get(
+      `${FYERS_API_URL}/api/v3/profile`,
+      {
+        headers: {
+          Authorization: `${FYERS_APP_ID}:${accessToken}`
+        }
+      }
+    );
+
+    res.json(response.data);
+
   } catch (error) {
-    logger.error('Failed to parse credentials', { error: error.message });
-    return null;
+    handleFyersError(error, res);
   }
-}
+});
+
+// 6. GET /api/fyers/funds - Get account funds
+router.get('/funds', async (req, res) => {
+  try {
+    const accessToken = req.session?.fyersAccessToken;
+
+    if (!accessToken) {
+      return res.status(401).json({
+        error: 'Not Authenticated',
+        message: 'Please connect your Fyers account first'
+      });
+    }
+
+    const response = await axios.get(
+      `${FYERS_API_URL}/api/v3/funds`,
+      {
+        headers: {
+          Authorization: `${FYERS_APP_ID}:${accessToken}`
+        }
+      }
+    );
+
+    res.json(response.data);
+
+  } catch (error) {
+    handleFyersError(error, res);
+  }
+});
 
 module.exports = router;
