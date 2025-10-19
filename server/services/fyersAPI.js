@@ -28,7 +28,7 @@ class FyersAPI {
 
   // Exchange authorization code for access token
   async getAccessToken(authCode) {
-    let data; // Declare data outside try block for error logging
+    let data;
     
     try {
       logger.info('Starting token exchange', { 
@@ -66,7 +66,10 @@ class FyersAPI {
 
       logger.info('Token exchange response', { 
         status: response.status,
-        responseData: response.data
+        success: response.data.s === 'ok',
+        code: response.data.code,
+        hasAccessToken: !!response.data.access_token,
+        hasRefreshToken: !!response.data.refresh_token
       });
 
       if (response.data.s === 'ok') {
@@ -83,8 +86,8 @@ class FyersAPI {
         error: error.message,
         status: error.response?.status,
         statusText: error.response?.statusText,
-        responseData: error.response?.data,
-        responseHeaders: error.response?.headers,
+        errorCode: error.response?.data?.code,
+        errorMessage: error.response?.data?.message,
         requestData: data ? {
           grant_type: data.grant_type,
           appIdHash: data.appIdHash ? `${data.appIdHash.substring(0, 8)}...` : 'missing',
@@ -188,7 +191,9 @@ class FyersAPI {
     } catch (error) {
       logger.error('Fyers order placement error', { 
         error: error.message,
-        orderData: orderData
+        symbol: orderData?.symbol,
+        side: orderData?.side,
+        qty: orderData?.qty
       });
       throw error;
     }
@@ -210,8 +215,7 @@ class FyersAPI {
     } catch (error) {
       logger.error('Fyers order modification error', { 
         error: error.message,
-        orderId,
-        modifyData
+        orderId
       });
       throw error;
     }
@@ -451,9 +455,16 @@ class FyersAPI {
     }
   }
 
-  // Refresh access token
+  // Refresh access token using refresh token
+  // Note: According to Fyers docs, this only returns a NEW access_token, NOT a new refresh_token
   async refreshAccessToken(refreshToken, pin) {
     try {
+      logger.info('Refreshing access token');
+
+      if (!this.appId || !this.secretKey || !refreshToken || !pin) {
+        throw new Error('Missing required parameters for token refresh');
+      }
+
       const data = {
         grant_type: 'refresh_token',
         appIdHash: this.generateAppIdHash(),
@@ -467,20 +478,31 @@ class FyersAPI {
         }
       });
 
+      logger.info('Token refresh response', { 
+        status: response.status,
+        success: response.data.s === 'ok',
+        hasAccessToken: !!response.data.access_token
+      });
+
       if (response.data.s === 'ok') {
+        // According to docs, only access_token is returned, NOT a new refresh_token
         return {
-          accessToken: response.data.access_token,
-          refreshToken: response.data.refresh_token,
-          expiresIn: response.data.expires_in
+          accessToken: response.data.access_token
         };
       } else {
         throw new Error(response.data.message || 'Failed to refresh token');
       }
     } catch (error) {
-      logger.error('Fyers token refresh error', { error: error.message });
+      logger.error('Fyers token refresh error', { 
+        error: error.message,
+        status: error.response?.status,
+        errorCode: error.response?.data?.code,
+        errorMessage: error.response?.data?.message
+      });
       throw error;
     }
   }
 }
 
-module.exports = new FyersAPI();
+// Export the class, not an instance
+module.exports = FyersAPI;
