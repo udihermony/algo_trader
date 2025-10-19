@@ -10,7 +10,8 @@ class FyersAPI {
     this.redirectURI = process.env.FYERS_REDIRECT_URI;
     
     // Extract base app ID without suffix for hashing
-    this.baseAppId = this.appId ? this.appId.replace(/-100$/, '') : null;
+    // Handle both Individual Apps (-100) and Third Party Apps (-102)
+    this.baseAppId = this.appId ? this.appId.replace(/-\d+$/, '') : null;
   }
 
   // Generate authorization URL for OAuth flow
