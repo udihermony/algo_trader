@@ -8,6 +8,17 @@ class FyersAPI {
     this.appId = process.env.FYERS_APP_ID;
     this.secretKey = process.env.FYERS_SECRET_KEY;
     this.redirectURI = process.env.FYERS_REDIRECT_URI;
+    
+    // Validate required config
+    if (!this.appId) {
+      throw new Error('FYERS_APP_ID environment variable is not set');
+    }
+    if (!this.secretKey) {
+      throw new Error('FYERS_SECRET_KEY environment variable is not set');
+    }
+    if (!this.redirectURI) {
+      throw new Error('FYERS_REDIRECT_URI environment variable is not set');
+    }
   }
 
   // Generate authorization URL for OAuth flow

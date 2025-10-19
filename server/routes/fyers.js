@@ -42,11 +42,25 @@ const handleFyersError = (error, res) => {
 // 1. GET /api/fyers/login - Initiate OAuth flow
 router.get('/login', (req, res) => {
   try {
+    // DEBUG: Log environment variables
+    console.log('🔍 Environment check:', {
+      hasAppId: !!FYERS_APP_ID,
+      hasSecretKey: !!FYERS_SECRET_KEY,
+      hasRedirectURI: !!FYERS_REDIRECT_URI,
+      appId: FYERS_APP_ID,
+      redirectURI: FYERS_REDIRECT_URI
+    });
+
     // Validate configuration
     if (!FYERS_APP_ID || !FYERS_SECRET_KEY || !FYERS_REDIRECT_URI) {
       return res.status(500).json({
         error: 'Configuration Error',
-        message: 'Fyers credentials not configured. Please check server environment variables.'
+        message: 'Fyers credentials not configured. Please check server environment variables.',
+        details: {
+          hasAppId: !!FYERS_APP_ID,
+          hasSecretKey: !!FYERS_SECRET_KEY,
+          hasRedirectURI: !!FYERS_REDIRECT_URI
+        }
       });
     }
 
@@ -67,13 +81,18 @@ router.get('/login', (req, res) => {
     console.log('🔐 Initiating Fyers OAuth flow');
     console.log('Auth URL:', authUrl.toString());
 
-    // Redirect to Fyers login
-    res.redirect(authUrl.toString());
+    // Return JSON response for frontend to handle
+    res.json({
+      success: true,
+      url: authUrl.toString(),
+      state: state
+    });
   } catch (error) {
     console.error('Error generating auth URL:', error);
     res.status(500).json({
       error: 'Server Error',
-      message: 'Failed to initiate Fyers login'
+      message: 'Failed to initiate Fyers login',
+      details: error.message
     });
   }
 });
