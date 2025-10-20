@@ -3,6 +3,11 @@ const express = require('express');
 const router = express.Router();
 const FyersAPI = require('../services/fyersAPI');
 const logger = require('../utils/logger');
+const { 
+  getFyersCredentials, 
+  saveFyersCredentials, 
+  clearFyersCredentials 
+} = require('../utils/fyersTokens');
 
 // Initialize Fyers API service
 let fyersAPI;
@@ -11,6 +16,12 @@ try {
 } catch (error) {
   logger.error('Failed to initialize FyersAPI service', { error: error.message });
 }
+
+// Helper to get user ID from request
+const getUserId = (req) => {
+  // If using JWT auth middleware, userId should be in req.user
+  return req.user?.id || 1; // Fallback to user 1 for now
+};
 
 // Error handler middleware
 const handleFyersError = (error, res) => {
@@ -44,10 +55,12 @@ router.get('/login', (req, res) => {
     // Store state in session for CSRF protection
     req.session = req.session || {};
     req.session.fyersState = authData.state;
+    req.session.userId = getUserId(req); // Store user ID for callback
 
     logger.info('Generated auth URL', { 
       url: authData.url,
-      hasState: !!authData.state
+      hasState: !!authData.state,
+      userId: req.session.userId
     });
 
     // Return JSON response for frontend to handle
@@ -161,9 +174,10 @@ router.get('/callback', async (req, res) => {
 // 3. GET /api/fyers/status - Check connection status
 router.get('/status', async (req, res) => {
   try {
-    const accessToken = req.session?.fyersAccessToken;
+    const userId = getUserId(req);
+    const credentials = await getFyersCredentials(userId);
 
-    if (!accessToken) {
+    if (!credentials || !credentials.accessToken) {
       return res.json({
         success: true,
         isLoggedIn: false,
@@ -180,26 +194,35 @@ router.get('/status', async (req, res) => {
       });
     }
 
-    // Verify token by fetching profile using SDK
-    const profile = await fyersAPI.getProfile(accessToken);
+    try {
+      // Verify token by fetching profile
+      const profile = await fyersAPI.getProfile(credentials.accessToken);
 
-    res.json({
-      success: true,
-      isLoggedIn: true,
-      hasAccessToken: true,
-      hasRefreshToken: !!req.session?.fyersRefreshToken,
-      profile: profile
-    });
+      res.json({
+        success: true,
+        isLoggedIn: true,
+        hasAccessToken: true,
+        hasRefreshToken: !!credentials.refreshToken,
+        profile: profile
+      });
+    } catch (error) {
+      // Token might be expired
+      logger.warn('Token verification failed', { error: error.message, userId });
+      res.json({
+        success: true,
+        isLoggedIn: false,
+        hasAccessToken: false,
+        hasRefreshToken: false,
+        message: 'Token expired or invalid',
+        needsReauth: true
+      });
+    }
 
   } catch (error) {
-    logger.warn('Token verification failed', { error: error.message });
-    // Token might be expired
-    res.json({
-      success: true,
-      isLoggedIn: false,
-      hasAccessToken: false,
-      hasRefreshToken: false,
-      message: 'Token expired or invalid'
+    logger.error('Status check error', { error: error.message });
+    res.status(500).json({
+      error: 'Server Error',
+      message: 'Failed to check Fyers status'
     });
   }
 });
@@ -207,19 +230,24 @@ router.get('/status', async (req, res) => {
 // 4. POST /api/fyers/disconnect - Disconnect Fyers account
 router.post('/disconnect', async (req, res) => {
   try {
-    const accessToken = req.session?.fyersAccessToken;
+    const userId = getUserId(req);
+    const credentials = await getFyersCredentials(userId);
 
-    if (accessToken && fyersAPI) {
+    if (credentials?.accessToken && fyersAPI) {
       try {
-        // Call Fyers logout endpoint using SDK
-        await fyersAPI.logout(accessToken);
+        await fyersAPI.logout(credentials.accessToken);
       } catch (error) {
-        // Ignore errors, we're disconnecting anyway
-        logger.warn('Logout API call failed, continuing with disconnect', { error: error.message });
+        logger.warn('Logout API call failed, continuing with disconnect', { 
+          error: error.message,
+          userId 
+        });
       }
     }
 
-    // Clear session
+    // Clear credentials from database
+    await clearFyersCredentials(userId);
+
+    // Also clear session if exists
     if (req.session) {
       delete req.session.fyersAccessToken;
       delete req.session.fyersRefreshToken;
@@ -239,9 +267,10 @@ router.post('/disconnect', async (req, res) => {
 // 5. GET /api/fyers/profile - Get user profile
 router.get('/profile', async (req, res) => {
   try {
-    const accessToken = req.session?.fyersAccessToken;
+    const userId = getUserId(req);
+    const credentials = await getFyersCredentials(userId);
 
-    if (!accessToken) {
+    if (!credentials || !credentials.accessToken) {
       return res.status(401).json({
         error: 'Not Authenticated',
         message: 'Please connect your Fyers account first'
@@ -255,7 +284,7 @@ router.get('/profile', async (req, res) => {
       });
     }
 
-    const profile = await fyersAPI.getProfile(accessToken);
+    const profile = await fyersAPI.getProfile(credentials.accessToken);
     res.json(profile);
 
   } catch (error) {
@@ -266,9 +295,10 @@ router.get('/profile', async (req, res) => {
 // 6. GET /api/fyers/funds - Get account funds
 router.get('/funds', async (req, res) => {
   try {
-    const accessToken = req.session?.fyersAccessToken;
+    const userId = getUserId(req);
+    const credentials = await getFyersCredentials(userId);
 
-    if (!accessToken) {
+    if (!credentials || !credentials.accessToken) {
       return res.status(401).json({
         error: 'Not Authenticated',
         message: 'Please connect your Fyers account first'
@@ -282,8 +312,36 @@ router.get('/funds', async (req, res) => {
       });
     }
 
-    const funds = await fyersAPI.getBalance(accessToken);
+    const funds = await fyersAPI.getBalance(credentials.accessToken);
     res.json(funds);
+
+  } catch (error) {
+    handleFyersError(error, res);
+  }
+});
+
+// 7. GET /api/fyers/positions - Get positions
+router.get('/positions', async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const credentials = await getFyersCredentials(userId);
+
+    if (!credentials || !credentials.accessToken) {
+      return res.status(401).json({
+        error: 'Not Authenticated',
+        message: 'Please connect your Fyers account first'
+      });
+    }
+
+    if (!fyersAPI) {
+      return res.status(500).json({
+        error: 'Service Error',
+        message: 'Fyers API service not initialized'
+      });
+    }
+
+    const positions = await fyersAPI.getPositions(credentials.accessToken);
+    res.json(positions);
 
   } catch (error) {
     handleFyersError(error, res);

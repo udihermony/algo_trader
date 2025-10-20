@@ -1,3 +1,4 @@
+//server/index.js
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -104,64 +105,72 @@ app.get('/api/fyers/login', (req, res) => {
 app.get('/api/fyers/callback', async (req, res) => {
   const FyersAPI = require('./services/fyersAPI');
   const fyersAPI = new FyersAPI();
-  const db = require('./config/database');
+  const { saveFyersCredentials } = require('./utils/fyersTokens');
   
   try {
-    const { code, state } = req.query;
+    const { code, state, auth_code, s, message } = req.query;
     
     logger.info('FYERS callback received', { 
-      code: code ? 'present' : 'missing', 
+      code: code ? 'present' : 'missing',
+      auth_code: auth_code ? 'present' : 'missing',
       state: state || 'missing',
-      query: req.query 
+      s: s,
+      message: message
     });
-    
-    if (!code) {
-      logger.error('FYERS callback missing auth code', { query: req.query });
-      return res.status(400).json({ error: 'Missing auth code' });
+
+    // Check for error response
+    if (s === 'error' || (!code && !auth_code)) {
+      const errorMsg = message || 'No authorization code received';
+      logger.error('FYERS callback error', { error: errorMsg });
+      return res.redirect(`https://algo-trader-chi.vercel.app/dashboard/settings?fyers_error=${encodeURIComponent(errorMsg)}`);
     }
+
+    // Get auth code (priority: auth_code > code)
+    const authCode = auth_code || code;
+
+    // Validate state if stored in session
+    if (req.session?.fyersState && state && state !== req.session.fyersState) {
+      logger.error('State mismatch - possible CSRF', { 
+        expected: req.session.fyersState,
+        received: state 
+      });
+      return res.redirect('https://algo-trader-chi.vercel.app/dashboard/settings?fyers_error=Invalid+state');
+    }
+
+    // Get user ID from session or default to 1
+    const userId = req.session?.userId || 1;
 
     // Exchange auth code for tokens
-    logger.info('Exchanging auth code for tokens...');
-    const tokens = await fyersAPI.getAccessToken(code);
-    logger.info('Token exchange successful', { 
-      hasAccessToken: !!tokens.accessToken,
-      hasRefreshToken: !!tokens.refreshToken 
-    });
-
-    // Check if user 1 exists, if not create it
-    const userCheck = await db.query('SELECT id FROM users WHERE id = 1');
-    if (userCheck.rows.length === 0) {
-      logger.info('Creating admin user (id=1)...');
-      await db.query(
-        `INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
-        [1, 'admin@example.com', 'dummy_hash', 'Admin', 'User', true]
-      );
+    logger.info('Exchanging auth code for tokens...', { userId });
+    const tokens = await fyersAPI.getAccessToken(authCode);
+    
+    if (!tokens.accessToken) {
+      throw new Error('No access token received');
     }
 
-    // Store tokens for user 1
-    logger.info('Storing FYERS tokens for user 1...');
-    await db.query(
-      `INSERT INTO settings (user_id, fyers_credentials)
-       VALUES ($1, $2)
-       ON CONFLICT (user_id)
-       DO UPDATE SET fyers_credentials = $2, updated_at = CURRENT_TIMESTAMP`,
-      [1, JSON.stringify(tokens)]
-    );
+    logger.info('Token exchange successful', { 
+      hasAccessToken: !!tokens.accessToken,
+      hasRefreshToken: !!tokens.refreshToken,
+      userId
+    });
 
-    logger.info('FYERS token stored successfully', { userId: 1 });
-    return res.redirect('https://algo-trader-chi.vercel.app/dashboard/settings');
+    // Save tokens to database using helper
+    await saveFyersCredentials(userId, tokens);
+
+    // Clear session state
+    if (req.session) {
+      delete req.session.fyersState;
+    }
+
+    logger.info('FYERS credentials stored successfully', { userId });
+    return res.redirect('https://algo-trader-chi.vercel.app/dashboard/settings?fyers_success=true');
     
   } catch (error) {
     logger.error('FYERS callback error', { 
       error: error.message,
-      stack: error.stack,
-      query: req.query 
+      stack: error.stack
     });
-    return res.status(500).json({ 
-      error: 'Failed to complete FYERS auth',
-      details: error.message 
-    });
+    return res.redirect(`https://algo-trader-chi.vercel.app/dashboard/settings?fyers_error=${encodeURIComponent(error.message)}`);
   }
 });
 
