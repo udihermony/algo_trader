@@ -80,7 +80,9 @@ router.get('/callback', async (req, res) => {
       hasCode: !!code,
       hasState: !!state,
       s: s,
-      message: message
+      message: message,
+      authCodeType: auth_code ? 'JWT' : 'simple',
+      codeValue: code
     });
 
     // Check if Fyers returned an error
@@ -91,6 +93,7 @@ router.get('/callback', async (req, res) => {
     }
 
     // Get auth code (Fyers sends it as 'auth_code' or 'code')
+    // Priority: auth_code (JWT token) > code (simple code)
     const authCode = auth_code || code;
     
     if (!authCode) {
@@ -99,8 +102,8 @@ router.get('/callback', async (req, res) => {
       return res.redirect(`${frontendUrl}/dashboard/settings?fyers_error=${encodeURIComponent('No authorization code received')}`);
     }
 
-    // Check if code is an error code
-    if (authCode === '200' || authCode === '400' || authCode === '401' || authCode === '403' || authCode === '404' || authCode === '500') {
+    // Check if code is an error code (but not 200, which is success)
+    if (authCode === '400' || authCode === '401' || authCode === '403' || authCode === '404' || authCode === '500') {
       logger.error('Fyers returned error code', { authCode });
       const frontendUrl = process.env.FRONTEND_URL || 'https://algo-trader-chi.vercel.app';
       const errorMessage = encodeURIComponent(`Fyers login failed with error code: ${authCode}`);
