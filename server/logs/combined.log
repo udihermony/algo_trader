@@ -2198,3 +2198,7 @@
 {"level":"info","message":"Database connection established","service":"trading-app","timestamp":"2025-10-14T15:56:06.129Z"}
 {"level":"info","message":"Database connection established","service":"trading-app","timestamp":"2025-10-14T17:18:53.699Z"}
 {"error":"getaddrinfo ENOTFOUND postgres.railway.internal","level":"error","message":"Database query error","query":"SELECT column_name FROM information_schema.columns WHERE table_name = 'settings' AND column_name = '","service":"trading-app","timestamp":"2025-10-15T16:49:08.673Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T14:51:24.285Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T14:51:24.286Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T14:51:24.319Z"}
+{"error":"","level":"error","message":"Database query error","query":"SELECT NOW()","service":"trading-app","timestamp":"2025-10-20T14:51:24.332Z"}

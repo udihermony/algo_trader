@@ -1,28 +1,15 @@
-// Fixed Fyers Connection Handler
-// Replace your server/routes/fyers.js with this improved version
-
+// Fyers API Routes using official fyers-api-v3 SDK
 const express = require('express');
 const router = express.Router();
-const crypto = require('crypto');
-const axios = require('axios');
+const FyersAPI = require('../services/fyersAPI');
+const logger = require('../utils/logger');
 
-// Fyers API Configuration
-const FYERS_AUTH_URL = 'https://api-t1.fyers.in'; // For auth endpoints
-const FYERS_API_URL = 'https://api.fyers.in';     // For trading endpoints
-const FYERS_APP_ID = process.env.FYERS_APP_ID;
-const FYERS_SECRET_KEY = process.env.FYERS_SECRET_KEY;
-const FYERS_REDIRECT_URI = process.env.FYERS_REDIRECT_URI || 'https://algotrader-production.up.railway.app/api/fyers/callback';
-
-// Generate App ID Hash
-function generateAppIdHash() {
-  if (!FYERS_APP_ID || !FYERS_SECRET_KEY) {
-    throw new Error('Missing FYERS_APP_ID or FYERS_SECRET_KEY');
-  }
-  
-  return crypto
-    .createHash('sha256')
-    .update(`${FYERS_APP_ID}:${FYERS_SECRET_KEY}`)
-    .digest('hex');
+// Initialize Fyers API service
+let fyersAPI;
+try {
+  fyersAPI = new FyersAPI();
+} catch (error) {
+  logger.error('Failed to initialize FyersAPI service', { error: error.message });
 }
 
 // Error handler middleware
@@ -42,53 +29,35 @@ const handleFyersError = (error, res) => {
 // 1. GET /api/fyers/login - Initiate OAuth flow
 router.get('/login', (req, res) => {
   try {
-    // DEBUG: Log environment variables
-    console.log('🔍 Environment check:', {
-      hasAppId: !!FYERS_APP_ID,
-      hasSecretKey: !!FYERS_SECRET_KEY,
-      hasRedirectURI: !!FYERS_REDIRECT_URI,
-      appId: FYERS_APP_ID,
-      redirectURI: FYERS_REDIRECT_URI
-    });
-
-    // Validate configuration
-    if (!FYERS_APP_ID || !FYERS_SECRET_KEY || !FYERS_REDIRECT_URI) {
+    if (!fyersAPI) {
       return res.status(500).json({
-        error: 'Configuration Error',
-        message: 'Fyers credentials not configured. Please check server environment variables.',
-        details: {
-          hasAppId: !!FYERS_APP_ID,
-          hasSecretKey: !!FYERS_SECRET_KEY,
-          hasRedirectURI: !!FYERS_REDIRECT_URI
-        }
+        error: 'Service Error',
+        message: 'Fyers API service not initialized'
       });
     }
 
-    // Generate state for CSRF protection
-    const state = crypto.randomBytes(16).toString('hex');
+    logger.info('Initiating Fyers OAuth flow');
+
+    // Generate authorization URL using SDK
+    const authData = fyersAPI.generateAuthURL();
     
-    // Store state in session or database for validation
+    // Store state in session for CSRF protection
     req.session = req.session || {};
-    req.session.fyersState = state;
+    req.session.fyersState = authData.state;
 
-    // Build authorization URL
-    const authUrl = new URL(`${FYERS_AUTH_URL}/api/v3/generate-authcode`);
-    authUrl.searchParams.append('client_id', FYERS_APP_ID);
-    authUrl.searchParams.append('redirect_uri', FYERS_REDIRECT_URI);
-    authUrl.searchParams.append('response_type', 'code');
-    authUrl.searchParams.append('state', state);
-
-    console.log('🔐 Initiating Fyers OAuth flow');
-    console.log('Auth URL:', authUrl.toString());
+    logger.info('Generated auth URL', { 
+      url: authData.url,
+      hasState: !!authData.state
+    });
 
     // Return JSON response for frontend to handle
     res.json({
       success: true,
-      url: authUrl.toString(),
-      state: state
+      url: authData.url,
+      state: authData.state
     });
   } catch (error) {
-    console.error('Error generating auth URL:', error);
+    logger.error('Error generating auth URL', { error: error.message });
     res.status(500).json({
       error: 'Server Error',
       message: 'Failed to initiate Fyers login',
@@ -100,10 +69,13 @@ router.get('/login', (req, res) => {
 // 2. GET /api/fyers/callback - Handle OAuth callback
 router.get('/callback', async (req, res) => {
   try {
+    if (!fyersAPI) {
+      throw new Error('Fyers API service not initialized');
+    }
+
     const { auth_code, code, state, s, message } = req.query;
 
-    console.log('📨 Fyers callback received:', { 
-      query: req.query,
+    logger.info('Fyers callback received', { 
       hasAuthCode: !!auth_code,
       hasCode: !!code,
       hasState: !!state,
@@ -113,7 +85,7 @@ router.get('/callback', async (req, res) => {
 
     // Check if Fyers returned an error
     if (s === 'error') {
-      console.log('❌ Fyers returned error:', { code, message });
+      logger.error('Fyers returned error', { code, message });
       const frontendUrl = process.env.FRONTEND_URL || 'https://algo-trader-chi.vercel.app';
       return res.redirect(`${frontendUrl}/dashboard/settings?fyers_error=${encodeURIComponent(message || 'Authentication failed')}`);
     }
@@ -122,14 +94,14 @@ router.get('/callback', async (req, res) => {
     const authCode = auth_code || code;
     
     if (!authCode) {
-      console.log('❌ No auth code received:', req.query);
+      logger.error('No auth code received', { query: req.query });
       const frontendUrl = process.env.FRONTEND_URL || 'https://algo-trader-chi.vercel.app';
       return res.redirect(`${frontendUrl}/dashboard/settings?fyers_error=${encodeURIComponent('No authorization code received')}`);
     }
 
-    // Check if code is an error code (like 200, 400, etc.)
+    // Check if code is an error code
     if (authCode === '200' || authCode === '400' || authCode === '401' || authCode === '403' || authCode === '404' || authCode === '500') {
-      console.log('❌ Fyers returned error code:', authCode);
+      logger.error('Fyers returned error code', { authCode });
       const frontendUrl = process.env.FRONTEND_URL || 'https://algo-trader-chi.vercel.app';
       const errorMessage = encodeURIComponent(`Fyers login failed with error code: ${authCode}`);
       return res.redirect(`${frontendUrl}/dashboard/settings?fyers_error=${errorMessage}`);
@@ -143,54 +115,36 @@ router.get('/callback', async (req, res) => {
       });
     }
 
-    console.log('📨 Received auth code from Fyers');
-    console.log('Auth Code:', authCode.substring(0, 20) + '...');
+    logger.info('Exchanging auth code for access token', { 
+      authCodeLength: authCode.length 
+    });
 
-    // Exchange auth code for access token
-    const appIdHash = generateAppIdHash();
-    
-    console.log('🔄 Exchanging auth code for access token...');
-    
-    const tokenResponse = await axios.post(
-      `${FYERS_AUTH_URL}/api/v3/validate-authcode`,
-      {
-        grant_type: 'authorization_code',
-        appIdHash: appIdHash,
-        code: authCode
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+    // Exchange auth code for access token using SDK
+    const tokenData = await fyersAPI.getAccessToken(authCode);
 
-    console.log('✅ Token exchange successful');
-    console.log('Response:', JSON.stringify(tokenResponse.data, null, 2));
-
-    // Extract tokens
-    const { access_token, refresh_token } = tokenResponse.data;
-
-    if (!access_token) {
+    if (!tokenData.accessToken) {
       throw new Error('No access token in response');
     }
 
-    // Store tokens securely in database
-    // TODO: Implement token storage in your database
-    // await storeTokens(req.user.id, access_token, refresh_token);
+    // Store tokens securely in session (TODO: implement database storage)
+    req.session.fyersAccessToken = tokenData.accessToken;
+    req.session.fyersRefreshToken = tokenData.refreshToken;
 
-    // For now, store in session (NOT recommended for production)
-    req.session.fyersAccessToken = access_token;
-    req.session.fyersRefreshToken = refresh_token;
-
-    console.log('💾 Tokens stored successfully');
+    logger.info('Tokens stored successfully', {
+      hasAccessToken: !!tokenData.accessToken,
+      hasRefreshToken: !!tokenData.refreshToken
+    });
 
     // Redirect to frontend dashboard with success
     const frontendUrl = process.env.FRONTEND_URL || 'https://algo-trader-chi.vercel.app';
     res.redirect(`${frontendUrl}/dashboard?login=success`);
 
   } catch (error) {
-    console.error('❌ Callback error:', error.response?.data || error.message);
+    logger.error('Callback error', { 
+      error: error.message,
+      status: error.response?.status,
+      errorData: error.response?.data
+    });
     
     // Redirect to frontend with error
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -216,26 +170,26 @@ router.get('/status', async (req, res) => {
       });
     }
 
-    // Verify token by fetching profile
-    const profileResponse = await axios.get(
-      `${FYERS_API_URL}/api/v3/profile`,
-      {
-        headers: {
-          Authorization: `${FYERS_APP_ID}:${accessToken}`
-        }
-      }
-    );
+    if (!fyersAPI) {
+      return res.status(500).json({
+        error: 'Service Error',
+        message: 'Fyers API service not initialized'
+      });
+    }
+
+    // Verify token by fetching profile using SDK
+    const profile = await fyersAPI.getProfile(accessToken);
 
     res.json({
       success: true,
       isLoggedIn: true,
       hasAccessToken: true,
       hasRefreshToken: !!req.session?.fyersRefreshToken,
-      profile: profileResponse.data
+      profile: profile
     });
 
   } catch (error) {
-    console.log('Token verification failed:', error.message);
+    logger.warn('Token verification failed', { error: error.message });
     // Token might be expired
     res.json({
       success: true,
@@ -252,18 +206,14 @@ router.post('/disconnect', async (req, res) => {
   try {
     const accessToken = req.session?.fyersAccessToken;
 
-    if (accessToken) {
-      // Call Fyers logout endpoint
-      await axios.delete(
-        `${FYERS_API_URL}/api/v3/logout`,
-        {
-          headers: {
-            Authorization: `${FYERS_APP_ID}:${accessToken}`
-          }
-        }
-      ).catch(() => {
+    if (accessToken && fyersAPI) {
+      try {
+        // Call Fyers logout endpoint using SDK
+        await fyersAPI.logout(accessToken);
+      } catch (error) {
         // Ignore errors, we're disconnecting anyway
-      });
+        logger.warn('Logout API call failed, continuing with disconnect', { error: error.message });
+      }
     }
 
     // Clear session
@@ -295,16 +245,15 @@ router.get('/profile', async (req, res) => {
       });
     }
 
-    const response = await axios.get(
-      `${FYERS_API_URL}/api/v3/profile`,
-      {
-        headers: {
-          Authorization: `${FYERS_APP_ID}:${accessToken}`
-        }
-      }
-    );
+    if (!fyersAPI) {
+      return res.status(500).json({
+        error: 'Service Error',
+        message: 'Fyers API service not initialized'
+      });
+    }
 
-    res.json(response.data);
+    const profile = await fyersAPI.getProfile(accessToken);
+    res.json(profile);
 
   } catch (error) {
     handleFyersError(error, res);
@@ -323,16 +272,15 @@ router.get('/funds', async (req, res) => {
       });
     }
 
-    const response = await axios.get(
-      `${FYERS_API_URL}/api/v3/funds`,
-      {
-        headers: {
-          Authorization: `${FYERS_APP_ID}:${accessToken}`
-        }
-      }
-    );
+    if (!fyersAPI) {
+      return res.status(500).json({
+        error: 'Service Error',
+        message: 'Fyers API service not initialized'
+      });
+    }
 
-    res.json(response.data);
+    const funds = await fyersAPI.getBalance(accessToken);
+    res.json(funds);
 
   } catch (error) {
     handleFyersError(error, res);
