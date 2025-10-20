@@ -9,3 +9,10 @@
 {"error":"getaddrinfo ENOTFOUND postgres.railway.internal","level":"error","message":"Database query error","query":"SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY 1","service":"trading-app","timestamp":"2025-10-14T15:46:46.429Z"}
 {"error":"getaddrinfo ENOTFOUND postgres.railway.internal","level":"error","message":"Database query error","query":"SELECT column_name FROM information_schema.columns WHERE table_name = 'settings' AND column_name = '","service":"trading-app","timestamp":"2025-10-15T16:49:08.673Z"}
 {"error":"","level":"error","message":"Database query error","query":"SELECT NOW()","service":"trading-app","timestamp":"2025-10-20T14:51:24.332Z"}
+{"error":"RedisStore is not a constructor","level":"error","message":"Failed to initialize Redis","service":"trading-app","timestamp":"2025-10-20T19:22:07.929Z"}
+{"error":"","level":"error","message":"Redis client error","service":"trading-app","timestamp":"2025-10-20T19:22:07.937Z"}
+{"error":"RedisStore is not a function","level":"error","message":"Failed to initialize Redis","service":"trading-app","timestamp":"2025-10-20T19:22:17.665Z"}
+{"error":"","level":"error","message":"Redis client error","service":"trading-app","timestamp":"2025-10-20T19:22:17.673Z"}
+{"error":"RedisStore is not a function","level":"error","message":"Failed to initialize Redis","service":"trading-app","timestamp":"2025-10-20T19:22:39.755Z"}
+{"error":"","level":"error","message":"Redis client error","service":"trading-app","timestamp":"2025-10-20T19:22:39.764Z"}
+{"error":"","level":"error","message":"Database query error","query":"SELECT NOW()","service":"trading-app","timestamp":"2025-10-20T19:23:02.812Z"}

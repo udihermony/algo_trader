@@ -2202,3 +2202,20 @@
 {"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T14:51:24.286Z"}
 {"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T14:51:24.319Z"}
 {"error":"","level":"error","message":"Database query error","query":"SELECT NOW()","service":"trading-app","timestamp":"2025-10-20T14:51:24.332Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:22:07.874Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:22:07.876Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:22:07.910Z"}
+{"error":"RedisStore is not a constructor","level":"error","message":"Failed to initialize Redis","service":"trading-app","timestamp":"2025-10-20T19:22:07.929Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:22:17.617Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:22:17.618Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:22:17.647Z"}
+{"error":"RedisStore is not a function","level":"error","message":"Failed to initialize Redis","service":"trading-app","timestamp":"2025-10-20T19:22:17.665Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:22:39.704Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:22:39.705Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:22:39.734Z"}
+{"error":"RedisStore is not a function","level":"error","message":"Failed to initialize Redis","service":"trading-app","timestamp":"2025-10-20T19:22:39.755Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:23:02.776Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:23:02.777Z"}
+{"level":"info","message":"Fyers SDK initialized successfully","service":"trading-app","timestamp":"2025-10-20T19:23:02.799Z"}
+{"level":"info","message":"Using memory session store (development mode)","service":"trading-app","timestamp":"2025-10-20T19:23:02.803Z"}
+{"error":"","level":"error","message":"Database query error","query":"SELECT NOW()","service":"trading-app","timestamp":"2025-10-20T19:23:02.812Z"}

@@ -4,6 +4,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const session = require('express-session');
+const RedisStore = require('connect-redis');
+const { createClient } = require('redis');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 require('dotenv').config();
@@ -26,6 +28,42 @@ const server = createServer(app);
 
 // Trust proxy for Railway deployment
 app.set('trust proxy', 1);
+
+// Initialize Redis client for session storage
+let redisClient;
+let sessionStore;
+
+if (process.env.REDIS_URL && process.env.NODE_ENV === 'production') {
+  try {
+    redisClient = createClient({
+      url: process.env.REDIS_URL,
+      legacyMode: false
+    });
+
+    redisClient.connect().catch((err) => {
+      logger.error('Redis connection failed', { error: err.message });
+    });
+
+    redisClient.on('error', (err) => {
+      logger.error('Redis client error', { error: err.message });
+    });
+
+    redisClient.on('connect', () => {
+      logger.info('Redis client connected successfully');
+    });
+
+    // Use connect-redis v9 syntax
+    sessionStore = RedisStore(session);
+    sessionStore.client = redisClient;
+    logger.info('Redis session store initialized');
+  } catch (error) {
+    logger.error('Failed to initialize Redis', { error: error.message });
+    sessionStore = null; // Fallback to memory store
+  }
+} else {
+  logger.info('Using memory session store (development mode)');
+  sessionStore = null; // Use default memory store
+}
 const io = new Server(server, {
   cors: {
     origin: process.env.CORS_ORIGIN || "http://localhost:3000",
@@ -43,16 +81,19 @@ app.use(cors({
   credentials: true
 }));
 
-// Session configuration
+// Session configuration with Redis store
 app.use(session({
+  store: sessionStore, // Use Redis store if available, otherwise memory store
   secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: process.env.NODE_ENV === 'production', // HTTPS only in production
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Required for cross-origin
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    httpOnly: true // Prevent XSS attacks
+  },
+  name: 'fyers.session' // Custom session name
 }));
 
 // Rate limiting
@@ -247,6 +288,14 @@ async function startServer() {
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
   cronJobs.stop();
+  
+  // Close Redis connection if available
+  if (redisClient) {
+    redisClient.quit().catch((err) => {
+      logger.error('Error closing Redis connection', { error: err.message });
+    });
+  }
+  
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);
@@ -256,6 +305,14 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   logger.info('SIGINT received, shutting down gracefully');
   cronJobs.stop();
+  
+  // Close Redis connection if available
+  if (redisClient) {
+    redisClient.quit().catch((err) => {
+      logger.error('Error closing Redis connection', { error: err.message });
+    });
+  }
+  
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);
